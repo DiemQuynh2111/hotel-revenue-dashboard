@@ -23,7 +23,7 @@ const CONFIG = {
 };
 
 // ============================================================================
-// MODULE 2: DATA EXTRACTOR (Bộ xử lý dữ liệu ĐỘC LẬP lấy từ file bạn nhập)
+// MODULE 2: DATA EXTRACTOR (Xử lý dữ liệu ĐỘC LẬP)
 // ============================================================================
 const DataExtractor = {
   readFile: (file) => {
@@ -42,16 +42,10 @@ const DataExtractor = {
 
   getSheetData: (workbook, keyword, columnKeywords = []) => {
     if (!workbook) return [];
-    
-    // 1. Tìm theo tên sheet
     let sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes(keyword.toLowerCase()));
     
-    // 2. Nếu là file CSV (chỉ 1 sheet)
-    if (!sheetName && workbook.SheetNames.length === 1) {
-      sheetName = workbook.SheetNames[0];
-    }
+    if (!sheetName && workbook.SheetNames.length === 1) sheetName = workbook.SheetNames[0];
 
-    // 3. Dò quét nội dung các cột nếu bị mất tên
     if (!sheetName) {
       sheetName = workbook.SheetNames.find(n => {
         const data = XLSX.utils.sheet_to_json(workbook.Sheets[n], { header: 1 });
@@ -67,7 +61,6 @@ const DataExtractor = {
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
   },
 
-  // HÀM QUÉT, LỌC THÁNG 1/2026 VÀ TÍNH TRUNG BÌNH TỒN KHO TỪ FILE CỦA BẠN
   processRealData: async (historyFile, forecastFile) => {
     const [histWb, forecastWb] = await Promise.all([
       DataExtractor.readFile(historyFile), 
@@ -88,7 +81,7 @@ const DataExtractor = {
       });
     }
 
-    // 2. QUÉT TỒN KHO (TÍNH TOÁN THEO YÊU CẦU CỦA BẠN)
+    // 2. QUÉT TỒN KHO THÁNG 1/2026
     const invData = DataExtractor.getSheetData(histWb, "inventory", ["available", "total"]);
     
     let rawStats = {
@@ -102,35 +95,25 @@ const DataExtractor = {
       let isTargetMonth = false;
       let dateKey = "";
 
-      // Dò Ngày tháng cực kỳ chặt chẽ (Bất chấp kiểu Date hay String)
       for (let key in row) {
         const val = row[key];
         if (val instanceof Date) {
-          if (val.getFullYear() === 2026 && val.getMonth() === 0) {
-            isTargetMonth = true;
-            dateKey = val.toISOString().split('T')[0];
-          }
+          if (val.getFullYear() === 2026 && val.getMonth() === 0) { isTargetMonth = true; dateKey = val.toISOString().split('T')[0]; }
         } else if (typeof val === 'string') {
-          if (val.includes("2026-01") || val.includes("2026/01") || val.includes("1/2026")) {
-            isTargetMonth = true;
-            dateKey = val;
-          }
+          if (val.includes("2026-01") || val.includes("2026/01") || val.includes("1/2026")) { isTargetMonth = true; dateKey = val; }
         }
       }
 
       if (isTargetMonth) {
         syncStatus = true;
-        // Bắt tên Loại phòng
         const rtRaw = String(row.room_type_id || row.room_type || row.RoomType || "").toUpperCase();
         let rt = "RT_STD";
         if (rtRaw.includes("DLX") || rtRaw.includes("DELUXE")) rt = "RT_DLX";
         if (rtRaw.includes("STE") || rtRaw.includes("SUITE")) rt = "RT_STE";
 
-        // Bắt Ngày trong tuần/Cuối tuần
         const dtRaw = String(row.day_type || row.day_of_week || "").toLowerCase();
         const dt = (dtRaw.includes("weekend") || dtRaw.includes("sat") || dtRaw.includes("sun")) ? "Weekend" : "Weekday";
 
-        // Bắt Số lượng
         let capKey = Object.keys(row).find(k => k.toLowerCase().includes("total") || k.toLowerCase().includes("capacity"));
         let avaiKey = Object.keys(row).find(k => k.toLowerCase().includes("available") || k.toLowerCase().includes("sale"));
 
@@ -140,12 +123,12 @@ const DataExtractor = {
         if (!isNaN(cap) && !isNaN(avai) && dateKey) {
           rawStats[dt][rt].cap += cap;
           rawStats[dt][rt].avai += avai;
-          rawStats[dt][rt].days.add(dateKey); // Lưu ngày unique
+          rawStats[dt][rt].days.add(dateKey);
         }
       }
     });
 
-    // 3. CHIA TRUNG BÌNH RA ĐẦU RA
+    // 3. TÍNH TRUNG BÌNH RA ĐẦU RA
     let finalInventory = { Weekday: {}, Weekend: {} };
     const ROOM_NAMES = { RT_STD: "STANDARD ROOM", RT_DLX: "DELUXE ROOM", RT_STE: "EXECUTIVE SUITE" };
     const BASE_PRICES = { RT_STD: 95, RT_DLX: 129, RT_STE: 220 }; 
@@ -157,9 +140,8 @@ const DataExtractor = {
         
         const avgCapacity = Math.round(stat.cap / uniqueDaysCount);
         const avgAvai = Math.round(stat.avai / uniqueDaysCount);
-        const avgSold = avgCapacity - avgAvai; // SỨC CHỨA - CÒN TRỐNG = ĐÃ BÁN
+        const avgSold = avgCapacity - avgAvai;
 
-        // Nếu có Data file thì dùng Data file. Nếu không, Failsafe để app sống sót.
         finalInventory[dayType][roomType] = {
           name: ROOM_NAMES[roomType],
           capacity: syncStatus && avgCapacity > 0 ? avgCapacity : (roomType === "RT_STD" ? 45 : roomType === "RT_DLX" ? 28 : 7),
@@ -175,7 +157,7 @@ const DataExtractor = {
 };
 
 // ============================================================================
-// MODULE 3: CHIẾN LƯỢC KINH DOANH (Cấu hình)
+// MODULE 3: CHIẾN LƯỢC KINH DOANH
 // ============================================================================
 const STRATEGIES = {
   Weekday: {
@@ -186,7 +168,7 @@ const STRATEGIES = {
   Weekend: {
     RT_STD: { who: ["1. Leisure: Cầu du lịch tự túc cuối tuần cao."], where: ["OTA: Kéo Volume mạnh kèm Non-refundable.", "Direct Website: Kéo khách thành viên."], ancillary: "Buffet Bundle (F&B)" },
     RT_DLX: { who: ["1. Leisure Couples: Sẵn sàng chi trả cao."], where: ["Direct Website: Chạy gói Combo Weekend."], ancillary: "Spa Retreat Package" },
-    RT_STE: { who: ["1. Leisure VIP: Lấp đầy Suite đạt đỉnh 57.4%."], where: ["Direct Phone: Bảo vệ dòng tiền, triệt tiêu No-show."], ancillary: "Premium Heritage Bundle" }
+    RT_STE: { who: ["1. Leisure VIP: Lấp đầy Suite đạt đỉnh."], where: ["Direct Phone: Bảo vệ dòng tiền, triệt tiêu No-show."], ancillary: "Premium Heritage Bundle" }
   }
 };
 
@@ -201,16 +183,14 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const [selectedDayType, setSelectedDayType] = useState("Weekday");
-  const [simLeadTime, setSimLeadTime] = useState(15); 
+  const [simLeadTime, setSimLeadTime] = useState(30); 
   const [targetOccupancy, setTargetOccupancy] = useState(65);
 
   const handleProcessData = async () => {
     if (!historyFile || !forecastFile) return alert("Hệ thống yêu cầu cung cấp đủ 2 file dữ liệu.");
     setIsProcessing(true);
     
-    // Gọi TẦNG DỮ LIỆU ĐỘC LẬP để xử lý
     const processedData = await DataExtractor.processRealData(historyFile, forecastFile);
-    
     setAppData(processedData);
     setIsProcessing(false);
   };
@@ -225,11 +205,12 @@ export default function App() {
     
     const baseOccupancy = (totalSoldToday / totalDailyRooms) * 100;
 
+    // Quỹ phòng cần bán thêm theo mục tiêu (Cố định, không đổi theo Lead Time)
     const targetDailyRooms = Math.round(totalDailyRooms * (targetOccupancy / 100));
-    const extraDailyRoomsToSell = Math.max(0, targetDailyRooms - totalSoldToday);
-    const extraMonthlyRoomNightsToSell = extraDailyRoomsToSell * CONFIG.DAYS_IN_MONTH; // Số phòng đêm
+    const maxExtraDailyRooms = Math.max(0, targetDailyRooms - totalSoldToday);
+    const extraMonthlyRoomNightsToSell = maxExtraDailyRooms * CONFIG.DAYS_IN_MONTH; 
 
-    // ĐỊNH GIÁ ĐA TẦNG THEO LEAD TIME
+    // ĐỊNH GIÁ 5 TẦNG THEO LEAD TIME
     let leadMultiplier = 1.0;
     let leadReason = "";
 
@@ -250,20 +231,32 @@ export default function App() {
       leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume. GIẢM GIÁ 10%, kèm Non-refundable.";
     }
 
-    const inventoryFactor = Math.min(1, 0.2 + (0.8 * (simLeadTime / 30)));
+    // Tiến độ Booking (Pickup Progress): Lead Time = 30 -> 0%, Lead Time = 1 -> 100%
+    const pickupProgress = (30 - simLeadTime) / 29;
 
     const processedRooms = ["RT_STD", "RT_DLX", "RT_STE"].map(key => {
       const roomBase = baseData[key];
       const strat = STRATEGIES[selectedDayType][key];
       
-      const dynamicAvai = Math.max(0, Math.round(roomBase.baseAvai * inventoryFactor));
+      // 1. TÍNH ĐÃ BÁN (CẬP NHẬT THEO LEAD TIME)
+      const roomTargetShare = Math.round(maxExtraDailyRooms * (roomBase.capacity / totalDailyRooms));
+      const pickupRooms = Math.round(roomTargetShare * pickupProgress);
+      const dynamicSold = Math.min(roomBase.capacity, roomBase.sold + pickupRooms);
+
+      // 2. TÍNH KHÁCH TRẢ PHÒNG (Giả định Turnover = 25% số đang ở)
+      const checkOutRooms = Math.round(dynamicSold * 0.25);
+
+      // 3. TÍNH SẴN BÁN (Sức chứa - Đã bán + Khách trả)
+      const dynamicAvai = Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms);
+
+      // Tính giá
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
       const priceDiff = ((dynamicAdr / roomBase.oldPrice) - 1) * 100;
 
-      return { key, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
+      return { key, dynamicSold, checkOutRooms, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
     });
 
-    // MÔ PHỎNG MONTE CARLO CHUẨN KHOA HỌC (Normal Distribution)
+    // MÔ PHỎNG MONTE CARLO DỰA VÀO OCCUPANCY VÀ GIÁ GỐC (Tách biệt khỏi biến động của Lead Time)
     let successfulRoomRev = 0;
     const avgBaseAdr = processedRooms.reduce((sum, r) => sum + r.oldPrice, 0) / 3;
 
@@ -322,10 +315,10 @@ export default function App() {
         <header style={STYLES.header}>
           <div>
             <h1 style={STYLES.headerTitle}>Báo cáo Quản trị & Tối ưu Doanh thu - Tháng 01/2026</h1>
-            <p style={STYLES.headerSub}>Ứng dụng Data Extractor Pipeline, Định giá 5 Tầng & Monte Carlo.</p>
+            <p style={STYLES.headerSub}>Ứng dụng Pipeline Trích xuất Dữ liệu, Định giá 5 Tầng & Monte Carlo.</p>
           </div>
           <div style={appData.syncStatus ? STYLES.statusSuccess : STYLES.statusWarning}>
-             {appData.syncStatus ? "ĐÃ ĐỒNG BỘ DỮ LIỆU FILE (DATA SYNCED)" : "DỮ LIỆU FILE LỖI - ĐANG DÙNG BASELINE"}
+             {appData.syncStatus ? "ĐÃ ĐỒNG BỘ DỮ LIỆU FILE THÁNG 1" : "DỮ LIỆU FILE LỖI - ĐANG DÙNG BASELINE"}
           </div>
         </header>
 
@@ -387,8 +380,18 @@ export default function App() {
                     <td style={STYLES.td}>
                       <div style={STYLES.roomName}>{room.name}</div>
                       <div style={STYLES.roomStat}>Sức chứa: <strong>{room.capacity} phòng</strong></div>
-                      <div style={STYLES.roomStat}>Đã bán: <strong>{room.sold} phòng</strong></div>
-                      <div style={STYLES.roomAvai}>Sẵn bán (Available): {Utils.formatNum(room.avai)}</div>
+                      
+                      {/* ĐÃ BÁN VÀ KHÁCH TRẢ CẬP NHẬT THEO LEAD TIME */}
+                      <div style={{ fontSize: "12px", color: "#1e40af", marginBottom: "4px", fontWeight: "700" }}>
+                        Đã bán (Cập nhật): <strong>{room.dynamicSold} phòng</strong>
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#059669", marginBottom: "10px", fontWeight: "700" }}>
+                        Khách trả (Check-out): <strong>+{room.checkOutRooms} phòng</strong>
+                      </div>
+                      
+                      <div style={STYLES.roomAvai}>
+                        Sẵn bán (Available): {Utils.formatNum(room.avai)}
+                      </div>
                     </td>
                     <td style={STYLES.td}>
                       <div style={STYLES.priceOld}>{Utils.currency(room.oldPrice)}</div>
@@ -419,9 +422,9 @@ export default function App() {
             <div style={STYLES.impactGrid}>
               <div style={STYLES.impactTextCol}>
                 <p style={STYLES.impactDesc}>
-                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn (Normal Distribution) để định lượng rủi ro kinh tế học: Lực cầu thị trường và Tỷ lệ hủy phòng ảo trên kênh OTA.
+                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn (Normal Distribution) để định lượng rủi ro kinh tế học.
                   <br/><br/>
-                  Kết hợp <strong>Định giá đa tầng</strong> và <strong>Mục tiêu Công suất {targetOccupancy}%</strong>, Khối Kinh doanh có cơ sở phá vỡ giới hạn dự báo tĩnh.
+                  <strong>Lưu ý:</strong> Doanh thu kỳ vọng tính theo mức giá cơ sở (Base Rate), độc lập với biến động giá Lead Time ngắn hạn. Lead Time chỉ dùng kê toa cho rổ phòng thực tại, trong khi tổng doanh thu phản ánh <strong>Mục tiêu Công suất</strong> dài hạn.
                 </p>
                 <div style={STYLES.impactBaseBox}>
                   <div style={STYLES.impactBaseLabel}>MỐC DỰ BÁO TĨNH (BASELINE)</div>
@@ -457,11 +460,11 @@ export default function App() {
 }
 
 // ============================================================================
-// 5. THEME & STYLES (Trích xuất toàn bộ Inline Styles)
+// 5. THEME & STYLES
 // ============================================================================
 const STYLES = {
   layoutCenter: { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", position: "relative", padding: "20px", fontFamily: "system-ui, sans-serif" },
-  bgBlur: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", backgroundImage: "url('image_74fb96.jpg')", backgroundSize: "cover", backgroundPosition: "center", filter: "blur(12px)", opacity: 0.4, zIndex: -1 },
+  bgBlur: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f8fafc", zIndex: -1 },
   loginCard: { background: "white", padding: "50px", width: "100%", maxWidth: "800px", borderTop: "4px solid #1e3a8a", boxShadow: "0 10px 30px rgba(0,0,0,0.1)" },
   heading: { color: "#0f172a", margin: "0 0 10px 0", fontSize: "28px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "1px" },
   subHeading: { color: "#64748b", margin: "0 0 30px 0", fontSize: "14px", fontWeight: "500" },
@@ -471,7 +474,7 @@ const STYLES = {
   btnPrimary: { background: "#1e3a8a", color: "white", padding: "16px", border: "none", cursor: "pointer", fontWeight: "700", letterSpacing: "1px", width: "100%", fontSize: "14px", textTransform: "uppercase" },
   
   layoutMain: { minHeight: "100vh", padding: "40px", fontFamily: "system-ui, sans-serif", color: "#0f172a" },
-  bgBlurLight: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", backgroundImage: "url('image_74fb96.jpg')", backgroundSize: "cover", backgroundPosition: "center", filter: "blur(20px)", opacity: 0.25, zIndex: -1 },
+  bgBlurLight: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f1f5f9", zIndex: -1 },
   dashboardContainer: { maxWidth: "1400px", margin: "0 auto", background: "white", boxShadow: "0 10px 40px rgba(0,0,0,0.1)", border: "1px solid #e2e8f0" },
   header: { background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a", display: "flex", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { fontSize: "22px", fontWeight: "800", textTransform: "uppercase", margin: "0 0 8px 0", letterSpacing: "1px" },
