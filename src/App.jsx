@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import * as XLSX from "xlsx";
 
-// 1. FORMAT TIỀN TỆ AN TOÀN
+// 1. FORMAT TIỀN TỆ
 function currency(v) {
   const num = Number(v);
   if (isNaN(num)) return "$0";
@@ -25,17 +25,26 @@ const readExcel = (file) => {
   });
 };
 
+function isWeekend(dateVal) {
+  if (!dateVal) return false;
+  let d;
+  if (dateVal instanceof Date) d = dateVal;
+  else if (typeof dateVal === "number") d = new Date(Math.round((dateVal - 25569) * 86400 * 1000));
+  else d = new Date(dateVal);
+  if (isNaN(d.getTime())) return false;
+  const day = d.getDay();
+  return day === 5 || day === 6;
+}
+
 export default function App() {
   const [historyFile, setHistoryFile] = useState(null);
   const [forecastFile, setForecastFile] = useState(null);
   const [appData, setAppData] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // States Điều khiển
   const [selectedDayType, setSelectedDayType] = useState("Weekday");
   const [selectedRoomType, setSelectedRoomType] = useState("RT_STD");
-  const [simOccupancy, setSimOccupancy] = useState(65);
-  const [simLeadTime, setSimLeadTime] = useState(7); // Lead time mặc định 7 ngày
+  const [simLeadTime, setSimLeadTime] = useState(7);
 
   const handleProcessData = async () => {
     if (!historyFile || !forecastFile) return alert("Vui lòng tải lên đủ 2 file dữ liệu.");
@@ -44,7 +53,7 @@ export default function App() {
     try {
       const [histWb, forecastWb] = await Promise.all([readExcel(historyFile), readExcel(forecastFile)]);
 
-      // RÚT TRÍCH FILE DỰ BÁO
+      // ĐỌC FILE DỰ BÁO (BASELINE)
       const summarySheet = forecastWb.SheetNames.find(n => n.toLowerCase().includes("summary")) || forecastWb.SheetNames[0];
       const summaryData = XLSX.utils.sheet_to_json(forecastWb.Sheets[summarySheet]);
       const metrics = {};
@@ -57,7 +66,7 @@ export default function App() {
       const onHandTotal = metrics["On-hand Total Revenue"] || 110744;
       const gapTotal = metrics["Gap Total Revenue"] || 14749;
 
-      // RÚT TRÍCH FILE LỊCH SỬ
+      // ĐỌC FILE LỊCH SỬ
       const folioSheet = histWb.SheetNames.find(n => n.toLowerCase().includes("folio")) || histWb.SheetNames[0];
       const resSheet = histWb.SheetNames.find(n => n.toLowerCase().includes("reservation")) || histWb.SheetNames[1];
       const folios = XLSX.utils.sheet_to_json(histWb.Sheets[folioSheet]);
@@ -81,87 +90,92 @@ export default function App() {
       folioP002.forEach(f => {
         const resId = f.reservation_id || Object.values(f)[3];
         const rt = resMap[resId];
-        const amtStr = f.amount_net || Object.values(f)[6];
-        const amt = parseFloat(amtStr);
+        const amt = parseFloat(f.amount_net || Object.values(f)[6]);
         const dateVal = f.posting_date || Object.values(f)[2];
-        
         if (rt && !isNaN(amt)) {
-          let d = new Date(dateVal);
-          if (typeof dateVal === "number") d = new Date(Math.round((dateVal - 25569) * 86400 * 1000));
-          const day = d.getDay();
-          const dt = (day === 5 || day === 6) ? "Weekend" : "Weekday";
-          if (stats[dt] && stats[dt][rt]) { 
-            stats[dt][rt].sum += amt; 
-            stats[dt][rt].count += 1; 
-          }
+          const dt = isWeekend(dateVal) ? "Weekend" : "Weekday";
+          if (stats[dt] && stats[dt][rt]) { stats[dt][rt].sum += amt; stats[dt][rt].count += 1; }
         }
       });
 
       const getSafeOldPrice = (dt, rt) => {
-        if (stats[dt][rt].count > 0 && stats[dt][rt].sum > 0) return stats[dt][rt].sum / stats[dt][rt].count;
-        return rt === "RT_STD" ? (dt === "Weekend" ? 96 : 92) : rt === "RT_DLX" ? (dt === "Weekend" ? 135 : 131) : (dt === "Weekend" ? 215 : 212);
+        if (stats[dt][rt].count > 0) return stats[dt][rt].sum / stats[dt][rt].count;
+        return rt === "RT_STD" ? 92 : rt === "RT_DLX" ? 131 : 212;
       };
 
-      // ĐÓNG GÓI CHIẾN LƯỢC BÁM SÁT ONTOLOGY
+      // ĐÓNG GÓI DỮ LIỆU VÀ CHIẾN LƯỢC TỐI ƯU
       const finalData = {
         metrics: { forecast: forecastTotal, onHand: onHandTotal, gap: gapTotal },
         rooms: {
           Weekday: {
             RT_STD: {
-              name: "HẠNG TIÊU CHUẨN",
+              name: "HẠNG TIÊU CHUẨN (STANDARD)",
               oldPrice: getSafeOldPrice("Weekday", "RT_STD"),
-              who: "Corporate & Group (Trọng tâm lưu trú > 6 đêm)",
-              whyWho: "Dữ liệu cho thấy ngày thường mang lại lượng booking gấp đôi nhưng doanh thu phụ thuộc quá mức vào Leisure (62%). Mở rộng B2B giúp giảm rủi ro. Nhóm khách lưu trú dài ngày có chi tiêu Ancillary cao nhất.",
-              where: "Cân đối giữa Kênh OTA và Kênh Direct",
-              whyWhere: "OTA chiếm ưu thế về Volume nhưng bào mòn giá trị ròng. Direct có lượng booking thấp hơn nhưng mang lại Net ADR tích cực.",
-              ancillaryStrategy: "Cơ cấu Ancillary đang mất cân đối (F&B chiếm 52%). Với Corporate/Group, cần triển khai bán chéo dịch vụ 'Other' và 'F&B'."
+              basePrice: 90,
+              priorities: [
+                { segment: "Corporate", level: "Ưu tiên 1", reason: "Phân tích Weekday là giai đoạn Volume-driven. Khách Corporate tạo base công suất ổn định, giảm sự lệ thuộc rủi ro vào nhóm Leisure (hiện chiếm 62%).", method: "Ký kết hợp đồng B2B trực tiếp, không qua OTA." },
+                { segment: "Group", level: "Ưu tiên 2", reason: "Tận dụng nhóm khách lưu trú dài ngày (> 6 đêm) để tối ưu chi tiêu Ancillary.", method: "Bán qua đại lý (Wholesale) kèm điều khoản chặt chẽ." },
+                { segment: "Leisure", level: "Ưu tiên 3", reason: "Chốt lượng khách vãng lai để lấp đầy các phòng trống cuối ngày.", method: "Phân phối linh hoạt trên Website khách sạn." }
+              ],
+              bundle: "Phòng + Business Lunch (F&B) + Giặt ủi nhanh (Other)",
+              logic: "Giảm nhẹ giá so với lịch sử để giành giật tệp khách doanh nghiệp trung thành giữa tuần."
             },
             RT_DLX: {
-              name: "HẠNG CAO CẤP",
+              name: "HẠNG CAO CẤP (DELUXE)",
               oldPrice: getSafeOldPrice("Weekday", "RT_DLX"),
-              who: "Phân khúc Leisure",
-              whyWho: "Leisure là phân khúc mang lại ADR và RevPAR cao nhất. Đây là tệp khách chủ lực cần duy trì vào những ngày giữa tuần để đảm bảo Base Occupancy.",
-              where: "Chuyển dịch dần từ OTA sang Direct - Website",
-              whyWhere: "Mặc dù OTA kéo Occupancy, nhưng tỷ lệ hủy trên OTA (17.8%) cao hơn hẳn Direct (12.2%). Đẩy mạnh kênh Direct giúp kiểm soát Revenue Leakage.",
-              ancillaryStrategy: "Dịch vụ 'Spa' và 'Tour' chỉ chiếm 21%. Cần Bundle hạng Deluxe kèm 'Spa' hoặc 'Tour' để phá vỡ thế độc tôn của F&B."
+              basePrice: 130,
+              priorities: [
+                { segment: "Leisure", level: "Ưu tiên 1", reason: "Tệp khách mang lại ADR và RevPAR cao nhất. Cần chuyển dịch từ OTA sang Direct Website để bảo vệ Net Value.", method: "Gói khuyến mãi độc quyền trên Web." },
+                { segment: "MICE", level: "Ưu tiên 2", reason: "Tận dụng ngân sách sự kiện doanh nghiệp giữa tuần.", method: "Gói Bundle phòng họp + nghỉ dưỡng Deluxe." }
+              ],
+              bundle: "Phòng + Liệu trình Spa (60 phút) + City Tour",
+              logic: "Mục tiêu phá vỡ thế độc tôn 52% của F&B bằng cách đóng gói (Bundling) Spa và Tour vào giá phòng Deluxe."
             },
             RT_STE: {
-              name: "HẠNG VIP",
+              name: "HẠNG VIP (SUITE)",
               oldPrice: getSafeOldPrice("Weekday", "RT_STE"),
-              who: "Phân khúc MICE & Leisure",
-              whyWho: "MICE chiếm tỷ trọng rất nhỏ. Khai thác nhóm khách sự kiện cao cấp vào ngày thường giúp bù đắp sự sụt giảm room revenue.",
-              where: "Kênh Direct & B2B",
-              whyWhere: "Hạng phòng cao cấp tuyệt đối không phụ thuộc vào OTA để tránh mất phí hoa hồng lớn và tỷ lệ hủy ảo.",
-              ancillaryStrategy: "Dùng phương pháp Upsell chủ động: Mời khách MICE/Leisure sử dụng dịch vụ 'Tour' hoặc 'Spa' ngay tại quầy Check-in."
+              basePrice: 215,
+              priorities: [
+                { segment: "Corporate (Executive)", level: "Ưu tiên 1", reason: "Cấp quản lý cao cấp yêu cầu dịch vụ chuyên biệt, ít nhạy cảm về giá.", method: "Dịch vụ quản gia và Direct Phone đặt phòng." },
+                { segment: "Leisure (VIP)", level: "Ưu tiên 2", reason: "Khách nghỉ dưỡng muốn trải nghiệm di sản văn hóa.", method: "Bán qua các kênh lữ hành cao cấp." }
+              ],
+              bundle: "Premium All-inclusive (Full Ancillary Services)",
+              logic: "Giữ giá ở mức Premium. Phân tích chỉ ra 'hạn chế không nằm ở giá mà nằm ở quy mô khách'."
             }
           },
           Weekend: {
             RT_STD: {
-              name: "HẠNG TIÊU CHUẨN",
+              name: "HẠNG TIÊU CHUẨN (STANDARD)",
               oldPrice: getSafeOldPrice("Weekend", "RT_STD"),
-              who: "Phân khúc Leisure",
-              whyWho: "Weekend có số lượng booking giảm nhưng duy trì được giá trị phòng ở mức cao (ADR-driven). Khách Leisure ít nhạy cảm về giá.",
-              where: "Đa kênh (OTA & Direct) - Kèm điều kiện",
-              whyWhere: "OTA kéo khách tốt nhưng tỷ lệ chuyển đổi chỉ đạt 83.2%. PHẢI ÁP DỤNG: Siết chặt hoàn hủy với booking có Lead Time dài trên OTA.",
-              ancillaryStrategy: "Chi tiêu Ancillary vào cuối tuần đang thấp hơn ngày thường. Cần thúc đẩy mạnh 'F&B' và 'Tour'."
+              basePrice: 102,
+              priorities: [
+                { segment: "Leisure", level: "Ưu tiên 1", reason: "Cuối tuần lượng booking giảm nhưng ADR tăng. Khách du lịch tự túc cuối tuần có sức mua tốt.", method: "Tối ưu hiển thị đa kênh trên các OTA chính." },
+                { segment: "Group", level: "Ưu tiên 2", reason: "Nhóm khách gia đình nhỏ đi du lịch tự túc cuối tuần.", method: "Chính sách giá Non-refundable để chống tỷ lệ hủy 83.2%." }
+              ],
+              bundle: "Phòng + Buffet Hải sản cuối tuần (F&B)",
+              logic: "Tăng giá mạnh so với lịch sử. Chiến lược ADR-driven để tối đa hóa doanh thu thực nhận khi cầu cao."
             },
             RT_DLX: {
-              name: "HẠNG CAO CẤP",
+              name: "HẠNG CAO CẤP (DELUXE)",
               oldPrice: getSafeOldPrice("Weekend", "RT_DLX"),
-              who: "Phân khúc Leisure",
-              whyWho: "Dư địa lớn nhất để khách sạn chuyển hướng sang tối ưu theo chiều sâu (Value-driven) thay vì chạy theo số lượng.",
-              where: "Direct Website (Khuyến khích Pre-arrival)",
-              whyWhere: "Direct Web nổi bật với mức giá ròng cao nhất. Tập trung Marketing để chuyển dịch khách từ OTA về Website khách sạn.",
-              ancillaryStrategy: "Dữ liệu cho thấy 'Spa' là dịch vụ có chi tiêu cao nhất cuối tuần. Biến 'Spa' thành sản phẩm Upsell chủ lực cho Deluxe."
+              basePrice: 145,
+              priorities: [
+                { segment: "Leisure", level: "Ưu tiên 1", reason: "Khách hàng ưu tiên trải nghiệm thư giãn. Dữ liệu cho thấy Spa là dịch vụ chi tiêu cao nhất cuối tuần.", method: "Chiến dịch quảng cáo Weekend Retreat trên Social Media." },
+                { segment: "MICE", level: "Ưu tiên 2", reason: "Chỉ phục vụ nếu còn tồn kho sát ngày.", method: "Bán phút chót (Last-minute) trên Website." }
+              ],
+              bundle: "Phòng + Weekend Spa Package + Tour di sản",
+              logic: "Khắc phục tỷ lệ hủy 17.8% trên OTA bằng cách điều hướng khách về Direct Web với mức giá cao kèm quà tặng dịch vụ."
             },
             RT_STE: {
-              name: "HẠNG VIP",
+              name: "HẠNG VIP (SUITE)",
               oldPrice: getSafeOldPrice("Weekend", "RT_STE"),
-              who: "Phân khúc Leisure & Group",
-              whyWho: "Nhóm khách giúp tối đa hóa ADR và RevPAR, giảm thiểu rủi ro khi volume sụt giảm.",
-              where: "Kênh Direct",
-              whyWhere: "Để chặn đứng tỷ lệ No-show, bắt buộc áp dụng Non-Refundable 100% đối với hạng phòng Suite.",
-              ancillaryStrategy: "Nhóm này không nhạy cảm giá. Bundle toàn bộ hệ sinh thái: Phòng Suite + 'F&B' + 'Spa' + 'Tour'."
+              basePrice: 225,
+              priorities: [
+                { segment: "Leisure (Family/VIP)", level: "Ưu tiên 1", reason: "Dữ liệu lấp đầy Suite cuối tuần đạt 57.4% (cao nhất). Nhu cầu cực kỳ khan hiếm.", method: "Bán độc quyền qua Loyalty Program." },
+                { segment: "Group", level: "Ưu tiên 2", level: "Ưu tiên Thấp", reason: "Không ưu tiên khách đoàn cuối tuần để giữ phòng cho khách lẻ giá cao.", method: "Hạn chế mở bán trên kênh Wholesale." }
+              ],
+              bundle: "Luxury Heritage Bundle (Toàn bộ dịch vụ bổ trợ)",
+              logic: "Áp dụng giá trần và chính sách chống No-show 100% tiền phòng để bảo vệ tuyệt đối doanh thu."
             }
           }
         }
@@ -169,183 +183,157 @@ export default function App() {
 
       setAppData(finalData);
       setIsProcessing(false);
-    } catch (err) { 
-      alert("Lỗi xử lý file Excel."); 
-      setIsProcessing(false); 
-    }
+    } catch (err) { alert("Lỗi xử lý file."); setIsProcessing(false); }
   };
 
-  // MÀN HÌNH TẢI FILE
   if (!appData) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", background: "#f1f5f9", padding: "20px", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-        <h1 style={{ color: "#0f172a", marginBottom: "30px", fontSize: "32px", fontWeight: "900", letterSpacing: "-0.5px" }}>HỆ THỐNG BI: TỐI ƯU HÓA DOANH THU</h1>
-        <div style={{ background: "white", padding: "50px", borderRadius: "12px", boxShadow: "0 10px 25px rgba(0,0,0,0.05)", textAlign: "center", border: "1px solid #e2e8f0", width: "100%", maxWidth: "800px" }}>
-          <div style={{ display: "flex", gap: "30px", marginBottom: "40px", justifyContent: "center" }}>
-            <div style={{ flex: 1, border: "2px dashed #cbd5e1", padding: "30px 20px", borderRadius: "8px", background: "#f8fafc" }}>
-              <p style={{ fontSize: "14px", fontWeight: "800", color: "#334155", marginBottom: "15px" }}>1. TẢI FILE DỮ LIỆU LỊCH SỬ</p>
-              <input type="file" accept=".xlsx" onChange={(e) => setHistoryFile(e.target.files[0])} style={{ fontSize: "13px" }} />
-            </div>
-            <div style={{ flex: 1, border: "2px dashed #cbd5e1", padding: "30px 20px", borderRadius: "8px", background: "#f8fafc" }}>
-              <p style={{ fontSize: "14px", fontWeight: "800", color: "#334155", marginBottom: "15px" }}>2. TẢI FILE DỰ BÁO THÁNG 01</p>
-              <input type="file" accept=".xlsx" onChange={(e) => setForecastFile(e.target.files[0])} style={{ fontSize: "13px" }} />
-            </div>
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", background: "#0f172a", padding: "20px", fontFamily: "system-ui" }}>
+        <h1 style={{ color: "white", marginBottom: "30px", fontWeight: "900" }}>HỆ THỐNG BI: TỐI ƯU DOANH THU THÁNG 1</h1>
+        <div style={{ background: "white", padding: "40px", borderRadius: "8px", textAlign: "center", width: "100%", maxWidth: "800px" }}>
+          <div style={{ display: "flex", gap: "20px", marginBottom: "30px" }}>
+            <div style={{ flex: 1, border: "1px solid #ddd", padding: "20px" }}><p style={{ fontWeight: "700" }}>FILE LỊCH SỬ</p><input type="file" onChange={(e) => setHistoryFile(e.target.files[0])} /></div>
+            <div style={{ flex: 1, border: "1px solid #ddd", padding: "20px" }}><p style={{ fontWeight: "700" }}>FILE DỰ BÁO TĨNH</p><input type="file" onChange={(e) => setForecastFile(e.target.files[0])} /></div>
           </div>
-          <button onClick={handleProcessData} disabled={isProcessing} style={{ background: "#0f172a", color: "white", padding: "16px 40px", borderRadius: "6px", border: "none", cursor: "pointer", fontWeight: "800", letterSpacing: "1px", width: "100%", fontSize: "16px" }}>
-            {isProcessing ? "HỆ THỐNG ĐANG XỬ LÝ SỐ LIỆU..." : "XÁC NHẬN PHÂN TÍCH TÀI CHÍNH"}
+          <button onClick={handleProcessData} disabled={isProcessing} style={{ background: "#1e3a8a", color: "white", padding: "15px 40px", border: "none", borderRadius: "4px", cursor: "pointer", fontWeight: "800", width: "100%" }}>
+            {isProcessing ? "ĐANG TÍNH TOÁN..." : "KÍCH HOẠT MÔ HÌNH TỐI ƯU"}
           </button>
         </div>
       </div>
     );
   }
 
-  // MÀN HÌNH BÁO CÁO
   const room = appData.rooms[selectedDayType][selectedRoomType];
-  
-  // ==============================================================
-  // THUẬT TOÁN ĐỊNH GIÁ ĐỘNG (KẾT HỢP OCCUPANCY VÀ LEAD TIME)
-  // ==============================================================
-  let occMultiplier = 1.0;
-  if (simOccupancy >= 75) occMultiplier = 1.20; 
-  else if (simOccupancy <= 35) occMultiplier = 0.90; 
 
-  let leadMultiplier = 1.0;
-  let leadStatus = "Tiêu chuẩn";
-  let leadReason = "Thời gian đặt phòng tiêu chuẩn. Hệ thống duy trì mức giá cân bằng để đảm bảo Tỷ lệ chuyển đổi (Conversion Rate).";
+  // LOGIC ĐỊNH GIÁ THEO LEAD TIME
+  let leadPrice = room.basePrice;
+  let leadText = "Duy trì mức giá cơ bản theo mốc Forecast.";
   let leadColor = "#334155";
 
-  if (simLeadTime <= 3) {
-    leadMultiplier = 1.15; // Tăng 15%
-    leadStatus = "Sát ngày (Last-minute)";
-    leadReason = "Phân tích hành vi cho thấy khách đặt sát ngày thường khẩn cấp và ít nhạy cảm về giá. Thuật toán tự động TĂNG GIÁ 15% nhằm tối đa hóa thặng dư tiêu dùng (Yield) thay vì chỉ lấp đầy phòng.";
-    leadColor = "#dc2626"; // Màu Đỏ
-  } else if (simLeadTime >= 15) {
-    leadMultiplier = 0.90; // Giảm 10%
-    leadStatus = "Từ sớm (Early Bird)";
-    leadReason = "Khách đặt sớm giúp khách sạn đảm bảo Công suất nền. Thuật toán tự động GIẢM GIÁ 10% để chốt Volume, nhưng hệ thống cảnh báo BẮT BUỘC áp dụng chính sách Không hoàn hủy (Non-refundable) để triệt tiêu rủi ro Tỷ lệ hủy 17.8% trên kênh OTA.";
-    leadColor = "#059669"; // Màu Xanh lá
-  }
+  if (simLeadTime <= 3) { leadPrice *= 1.15; leadText = "Tăng giá 15% (Yield Gain) do nhu cầu khẩn cấp của khách đặt sát ngày."; leadColor = "#dc2626"; }
+  else if (simLeadTime >= 15) { leadPrice *= 0.90; leadText = "Giảm giá 10% (Volume Capture) kèm điều kiện Không hoàn tiền để chốt công suất sớm."; leadColor = "#059669"; }
 
-  let weekendMultiplier = selectedDayType === "Weekend" ? 1.05 : 1.0;
-
-  const dynamicPrice = room.oldPrice * occMultiplier * leadMultiplier * weekendMultiplier;
-  const priceDiff = room.oldPrice > 0 ? ((dynamicPrice / room.oldPrice - 1) * 100).toFixed(1) : 0;
-
-  const targetRevenue = appData.metrics.onHand + (appData.metrics.gap * 0.92 * 1.15);
-  const growth = targetRevenue - appData.metrics.forecast;
+  // TÍNH TOÁN MỤC TIÊU THỰC NHẬN SAU TỐI ƯU (Projected Achievement)
+  // Dự phóng: Cứu 90% Gap và ăn chênh lệch giá Lead Time
+  const optimizedRevenue = appData.metrics.onHand + (appData.metrics.gap * 0.90 * (leadPrice / room.oldPrice));
+  const gainOverForecast = optimizedRevenue - appData.metrics.forecast;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "40px", fontFamily: "system-ui, -apple-system, sans-serif", color: "#1e293b" }}>
-      <div style={{ maxWidth: "1280px", margin: "0 auto", background: "white", borderRadius: "12px", boxShadow: "0 10px 30px rgba(0,0,0,0.08)", border: "1px solid #e2e8f0" }}>
+    <div style={{ minHeight: "100vh", background: "#0f172a", padding: "40px", fontFamily: "system-ui" }}>
+      <div style={{ maxWidth: "1200px", margin: "0 auto", background: "white", borderRadius: "10px", overflow: "hidden" }}>
         
-        <header style={{ background: "#1e3a8a", padding: "30px 40px", borderRadius: "12px 12px 0 0", color: "white" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: "900", textTransform: "uppercase", margin: "0 0 10px 0", letterSpacing: "0.5px" }}>Báo cáo Đề xuất Chiến lược & Tối ưu Doanh thu Tháng 01/2026</h1>
-          <p style={{ margin: 0, color: "#bfdbfe", fontSize: "15px" }}>Hệ thống tuân thủ 100% Ontology Phân khúc & Dịch vụ chuẩn của Khách sạn</p>
+        <header style={{ background: "#1e3a8a", color: "white", padding: "30px 40px" }}>
+          <h1 style={{ margin: 0, fontSize: "24px", fontWeight: "900", textTransform: "uppercase" }}>Kịch bản Tối ưu doanh thu thực nhận - Tháng 01/2026</h1>
+          <p style={{ margin: "5px 0 0 0", color: "#93c5fd" }}>Baseline Forecast: {currency(appData.metrics.forecast)} | On-hand: {currency(appData.metrics.onHand)}</p>
         </header>
 
         <div style={{ padding: "40px" }}>
           
-          <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>
-            <button onClick={() => setSelectedDayType("Weekday")} style={tabStyle(selectedDayType === "Weekday")}>BỐI CẢNH DỮ LIỆU: NGÀY TRONG TUẦN (WEEKDAY)</button>
-            <button onClick={() => setSelectedDayType("Weekend")} style={tabStyle(selectedDayType === "Weekend")}>BỐI CẢNH DỮ LIỆU: CUỐI TUẦN (WEEKEND)</button>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", marginBottom: "40px" }}>
+            <div style={{ padding: "20px", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+              <span style={{ fontSize: "12px", color: "#64748b", fontWeight: "800" }}>DỰ BÁO TĨNH (TỪ FILE)</span>
+              <div style={{ fontSize: "24px", fontWeight: "900" }}>{currency(appData.metrics.forecast)}</div>
+            </div>
+            <div style={{ padding: "20px", border: "2px solid #1e3a8a", borderRadius: "6px", background: "#f0f9ff" }}>
+              <span style={{ fontSize: "12px", color: "#1e3a8a", fontWeight: "900" }}>MỤC TIÊU SAU TỐI ƯU</span>
+              <div style={{ fontSize: "24px", fontWeight: "900", color: "#059669" }}>{currency(optimizedRevenue)}</div>
+            </div>
+            <div style={{ padding: "20px", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+              <span style={{ fontSize: "12px", color: "#64748b", fontWeight: "800" }}>GIÁ TRỊ TĂNG THÊM</span>
+              <div style={{ fontSize: "24px", fontWeight: "900", color: "#059669" }}>+{currency(gainOverForecast)}</div>
+            </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "40px" }}>
+          <div style={{ display: "flex", gap: "10px", marginBottom: "30px" }}>
+            <button onClick={() => setSelectedDayType("Weekday")} style={tabStyle(selectedDayType === "Weekday")}>WEEKDAY (VOLUME FOCUS)</button>
+            <button onClick={() => setSelectedDayType("Weekend")} style={tabStyle(selectedDayType === "Weekend")}>WEEKEND (ADR FOCUS)</button>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: "40px" }}>
             
-            {/* CỘT TRÁI: CHIẾN LƯỢC BÁM STORYBOARD */}
             <aside>
-              <div style={{ marginBottom: "20px" }}>
-                <p style={{ fontSize: "14px", fontWeight: "800", color: "#475569", marginBottom: "15px" }}>CHỌN HẠNG PHÒNG PHÂN TÍCH:</p>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  {["RT_STD", "RT_DLX", "RT_STE"].map(type => (
-                    <div key={type} onClick={() => setSelectedRoomType(type)} style={{ flex: 1, padding: "12px", cursor: "pointer", border: "1px solid #cbd5e1", textAlign: "center", background: selectedRoomType === type ? "#0f172a" : "white", color: selectedRoomType === type ? "white" : "#0f172a", fontWeight: "800", fontSize: "14px", borderRadius: "6px", transition: "0.2s" }}>
-                      {type === "RT_STD" ? "STANDARD" : type === "RT_DLX" ? "DELUXE" : "SUITE"}
-                    </div>
-                  ))}
-                </div>
+              <div style={{ marginBottom: "30px" }}>
+                <p style={{ fontSize: "12px", fontWeight: "900", color: "#64748b", marginBottom: "15px" }}>CHỌN HẠNG PHÒNG:</p>
+                {["RT_STD", "RT_DLX", "RT_STE"].map(type => (
+                  <div key={type} onClick={() => setSelectedRoomType(type)} style={{ padding: "16px", cursor: "pointer", border: "1px solid #ddd", marginBottom: "8px", background: selectedRoomType === type ? "#1e3a8a" : "white", color: selectedRoomType === type ? "white" : "#1e3a8a", fontWeight: "800", borderRadius: "4px" }}>
+                    {appData.rooms[selectedDayType][type].name}
+                  </div>
+                ))}
               </div>
 
-              <div style={{ padding: "24px", border: "1px solid #cbd5e1", borderRadius: "8px", background: "white", marginBottom: "20px" }}>
-                <h2 style={{ fontSize: "16px", fontWeight: "900", color: "#0f172a", borderBottom: "2px solid #e2e8f0", paddingBottom: "10px", marginBottom: "20px", margin: 0 }}>1. CHẨN ĐOÁN & CHIẾN LƯỢC PHÂN PHỐI</h2>
-                
-                <div style={{ background: "#f0f9ff", padding: "15px", borderRadius: "6px", borderLeft: "4px solid #0284c7", marginBottom: "15px" }}>
-                  <strong style={{ fontSize: "14px", color: "#0284c7" }}>🎯 ƯU TIÊN BÁN CHO AI: {room.who}</strong>
-                  <p style={{ margin: "8px 0 0 0", color: "#334155", lineHeight: "1.6", fontSize: "14px" }}>{room.whyWho}</p>
-                </div>
-
-                <div style={{ background: "#fff7ed", padding: "15px", borderRadius: "6px", borderLeft: "4px solid #ea580c", marginBottom: "15px" }}>
-                  <strong style={{ fontSize: "14px", color: "#ea580c" }}>📢 PHƯƠNG THỨC & KÊNH: {room.where}</strong>
-                  <p style={{ margin: "8px 0 0 0", color: "#334155", lineHeight: "1.6", fontSize: "14px" }}>{room.whyWhere}</p>
-                </div>
-
-                <div style={{ background: "#f5f3ff", padding: "15px", borderRadius: "6px", borderLeft: "4px solid #7c3aed" }}>
-                  <strong style={{ fontSize: "14px", color: "#7c3aed" }}>💡 CHIẾN LƯỢC DỊCH VỤ BỔ TRỢ (ANCILLARY)</strong>
-                  <p style={{ margin: "8px 0 0 0", color: "#334155", lineHeight: "1.6", fontSize: "14px" }}>{room.ancillaryStrategy}</p>
-                </div>
+              <div style={{ padding: "20px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px" }}>
+                <p style={{ fontSize: "12px", fontWeight: "900", color: "#0f172a", marginBottom: "10px", borderBottom: "2px solid #ddd", paddingBottom: "5px" }}>BÁN KÈM (BUNDLING):</p>
+                <div style={{ fontSize: "14px", fontWeight: "700", color: "#1e40af", lineHeight: "1.6" }}>{room.bundle}</div>
               </div>
             </aside>
 
-            {/* CỘT PHẢI: MÔ PHỎNG GIÁ ĐỘNG BẰNG OCCUPANCY & LEAD TIME */}
             <main>
-              <section style={{ marginBottom: "24px", background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
-                <h2 style={{ fontSize: "16px", fontWeight: "900", color: "#ffffff", background: "#0f172a", margin: 0, padding: "15px 20px" }}>2. MÔ PHỎNG ĐỊNH GIÁ ĐỘNG (VALUE-DRIVEN)</h2>
-                
-                <div style={{ padding: "20px" }}>
-                  <div style={{ fontSize: "14px", color: "#475569", marginBottom: "25px", background: "#f1f5f9", padding: "10px", borderRadius: "4px", fontWeight: "600" }}>
-                    MỨC GIÁ BASE TỪ LỊCH SỬ: <span style={{ color: "#0f172a", fontWeight: "900", fontSize: "16px" }}>{currency(room.oldPrice)}</span>
-                  </div>
+              {/* SLIDER LEAD TIME */}
+              <section style={{ marginBottom: "30px", padding: "24px", background: "#f1f5f9", borderRadius: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px" }}>
+                  <label style={{ fontWeight: "900", fontSize: "13px" }}>KHOẢNG CÁCH ĐẶT PHÒNG (LEAD TIME):</label>
+                  <span style={{ fontWeight: "900", color: "#1e3a8a", background: "white", padding: "4px 12px", borderRadius: "4px" }}>{simLeadTime} NGÀY</span>
+                </div>
+                <input type="range" min="0" max="30" value={simLeadTime} onChange={(e) => setSimLeadTime(Number(e.target.value))} style={{ width: "100%", accentColor: "#1e3a8a" }} />
+                <div style={{ marginTop: "15px", fontSize: "14px", color: leadColor, fontWeight: "700" }}>Hành động: {leadText}</div>
+              </section>
 
-                  <div style={{ marginBottom: "25px" }}>
-                    <label style={{ display: "flex", justifyContent: "space-between", fontWeight: "800", fontSize: "14px", color: "#0f172a" }}>
-                      <span>Công suất lấp đầy (Occupancy Effect):</span>
-                      <span style={{ color: "#1e40af" }}>{simOccupancy}%</span>
-                    </label>
-                    <input type="range" min="0" max="100" value={simOccupancy} onChange={(e) => setSimOccupancy(Number(e.target.value))} style={{ width: "100%", marginTop: "10px", accentColor: "#1e40af", cursor: "pointer" }} />
-                  </div>
-
-                  <div style={{ marginBottom: "15px", padding: "15px", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#f8fafc" }}>
-                    <label style={{ display: "flex", justifyContent: "space-between", fontWeight: "900", fontSize: "14px", color: "#0f172a", marginBottom: "10px" }}>
-                      <span>KHOẢNG CÁCH ĐẶT PHÒNG (LEAD TIME):</span>
-                      <span style={{ color: leadColor, background: "white", padding: "2px 10px", border: "1px solid #cbd5e1", borderRadius: "4px" }}>{simLeadTime} NGÀY</span>
-                    </label>
-                    <input type="range" min="0" max="30" value={simLeadTime} onChange={(e) => setSimLeadTime(Number(e.target.value))} style={{ width: "100%", accentColor: leadColor, cursor: "pointer" }} />
-                    
-                    <div style={{ marginTop: "15px", fontSize: "14px", lineHeight: "1.6", color: "#334155" }}>
-                      <strong style={{ color: "#0f172a" }}>Nhận diện khách:</strong> <span style={{ fontWeight: "800", color: leadColor }}>{leadStatus}</span><br/>
-                      <strong style={{ color: "#0f172a" }}>Lý luận Thuật toán:</strong> {leadReason}
-                    </div>
-                  </div>
-
-                  <div style={{ background: "#1e40af", padding: "25px", borderRadius: "8px", textAlign: "center", color: "white", marginTop: "20px" }}>
-                    <div style={{ fontSize: "13px", fontWeight: "800", letterSpacing: "1px", opacity: 0.9 }}>MỨC GIÁ XUẤT RA HỆ THỐNG PMS</div>
-                    <div style={{ fontSize: "52px", fontWeight: "900", margin: "5px 0" }}>{currency(dynamicPrice)}</div>
-                    <div style={{ fontSize: "14px", color: "#bfdbfe", fontWeight: "700" }}>
-                      Biên độ chênh lệch: {priceDiff > 0 ? "+" : ""}{priceDiff}% so với Giá Lịch sử
-                    </div>
-                  </div>
-
+              {/* BẢNG GIÁ */}
+              <section style={{ marginBottom: "40px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", textAlign: "left" }}>
+                      <th style={thStyle}>GIÁ LỊCH SỬ (ADR)</th>
+                      <th style={thStyle}>GIÁ TỐI ƯU ĐỀ XUẤT</th>
+                      <th style={thStyle}>BIÊN ĐỘ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={tdStyle}>{currency(room.oldPrice)}</td>
+                      <td style={{ ...tdStyle, color: "#1e3a8a", fontWeight: "900", fontSize: "24px" }}>{currency(leadPrice)}</td>
+                      <td style={{ ...tdStyle, color: leadPrice > room.oldPrice ? "#059669" : "#dc2626", fontWeight: "800" }}>{((leadPrice / room.oldPrice - 1) * 100).toFixed(1)}%</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ marginTop: "15px", padding: "15px", background: "#fdf8e6", borderLeft: "4px solid #f59e0b", fontSize: "14px", lineHeight: "1.6" }}>
+                  <strong>Căn cứ:</strong> {room.logic}
                 </div>
               </section>
-            </main>
 
+              {/* DANH SÁCH ƯU TIÊN */}
+              <section>
+                <h2 style={{ fontSize: "16px", fontWeight: "900", marginBottom: "20px", color: "#0f172a" }}>DANH SÁCH PHÂN KHÚC ƯU TIÊN (Hạng {selectedRoomType})</h2>
+                {room.priorities.map((item, idx) => (
+                  <div key={idx} style={{ padding: "20px", border: "1px solid #e2e8f0", marginBottom: "12px", borderRadius: "6px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+                      <span style={{ fontWeight: "900", color: "#1e3a8a" }}>{item.segment.toUpperCase()}</span>
+                      <span style={{ fontSize: "11px", fontWeight: "900", background: item.level.includes("1") ? "#0f172a" : "#e2e8f0", color: item.level.includes("1") ? "white" : "#64748b", padding: "3px 10px", borderRadius: "3px" }}>{item.level.toUpperCase()}</span>
+                    </div>
+                    <p style={{ fontSize: "14px", margin: "5px 0" }}><strong>Lý do:</strong> {item.reason}</p>
+                    <p style={{ fontSize: "14px", margin: "5px 0" }}><strong>Cách bán:</strong> {item.method}</p>
+                  </div>
+                ))}
+              </section>
+            </main>
           </div>
         </div>
 
-        {/* BOTTOM IMPACT SECTION */}
+        {/* FOOTER IMPACT */}
         <section style={{ background: "#0f172a", color: "white", padding: "40px" }}>
-          <h2 style={{ fontSize: "20px", fontWeight: "900", borderBottom: "1px solid #334155", paddingBottom: "15px", margin: "0 0 25px 0" }}>3. KẾT QUẢ ĐẠT ĐƯỢC DỰ PHÓNG (IMPACT ANALYSIS)</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "50px" }}>
-            <div style={{ lineHeight: "1.8", fontSize: "16px", color: "#e2e8f0" }}>
-              Bằng việc loại bỏ định giá cố định và ứng dụng <strong>Định giá động theo Công suất & Lead Time</strong>, Heritage Hue Hotel sẽ chuyển hướng thành công từ chiến lược Volume-driven sang Value-driven.
+          <h2 style={{ fontSize: "18px", fontWeight: "900", marginBottom: "20px", borderBottom: "1px solid #334155", paddingBottom: "15px" }}>KẾT QUẢ ĐẠT ĐƯỢC KỲ VỌNG (OPTIMIZATION IMPACT)</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "50px" }}>
+            <div style={{ fontSize: "15px", lineHeight: "1.8", color: "#cbd5e1" }}>
+              Hệ thống sử dụng dự báo {currency(appData.metrics.forecast)} làm bàn đạp để thực hiện tối ưu hóa. Bằng việc kiểm soát <strong>Lead Time</strong> và siết chặt <strong>Conversion Rate</strong> lên mức 91%, chúng ta sẽ lấp đầy 90% khoảng trống doanh thu còn thiếu.
               <br/><br/>
-              Mục tiêu doanh thu mới ước tính đạt <strong>{currency(targetRevenue)}</strong>, vượt qua mức trần dự báo tĩnh <strong>{currency(appData.metrics.forecast)}</strong> nhờ việc tối đa hóa thặng dư tiêu dùng của nhóm khách Last-minute và siết chặt rủi ro hủy phòng ảo trên OTA đối với khách Early Bird.
+              Khắc phục triệt để tình trạng Ancillary chạm trần bằng cách đóng gói dịch vụ Spa/Tour trực tiếp vào các booking hạng Deluxe/Suite.
             </div>
             <div style={{ paddingLeft: "40px", borderLeft: "2px solid #334155" }}>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "16px", lineHeight: "2.2" }}>
-                <li><strong style={{ color: "#38bdf8" }}>Tăng trưởng Doanh thu:</strong> +{currency(growth)}</li>
-                <li><strong style={{ color: "#38bdf8" }}>Cải thiện Tỷ lệ lấp đầy:</strong> +4.5%</li>
-                <li><strong style={{ color: "#38bdf8" }}>Bảo vệ Conversion:</strong> Nâng từ 83.2% lên 91%</li>
-                <li><strong style={{ color: "#38bdf8" }}>Đa dạng Ancillary:</strong> Tối ưu F&B, Spa, Tour</li>
+              <ul style={{ listStyle: "none", padding: 0, fontSize: "15px", lineHeight: "2.2" }}>
+                <li>Mục tiêu doanh thu mới: <strong style={{ color: "#38bdf8" }}>{currency(optimizedRevenue)}</strong></li>
+                <li>Tăng trưởng so với dự báo tĩnh: <strong style={{ color: "#38bdf8" }}>+{currency(gainOverForecast)}</strong></li>
+                <li>Khôi phục thất thoát từ tỷ lệ hủy: <strong style={{ color: "#38bdf8" }}>+7.8%</strong></li>
+                <li>Tối ưu hóa Net Value từ kênh Direct.</li>
               </ul>
             </div>
           </div>
@@ -356,10 +344,12 @@ export default function App() {
   );
 }
 
-// STYLES
 const tabStyle = (active) => ({
   flex: 1, padding: "16px", border: "1px solid #cbd5e1", cursor: "pointer", 
-  background: active ? "#1e40af" : "#f1f5f9", 
-  color: active ? "white" : "#475569", fontWeight: "900", fontSize: "14px",
-  letterSpacing: "0.5px", transition: "all 0.2s ease", borderRadius: "6px"
+  background: active ? "#1e3a8a" : "#f1f5f9", 
+  color: active ? "white" : "#475569", fontWeight: "900", fontSize: "13px",
+  letterSpacing: "0.5px", transition: "0.2s", borderRadius: "4px"
 });
+
+const thStyle = { padding: "15px", fontSize: "12px", borderBottom: "2px solid #cbd5e1", color: "#475569", fontWeight: "900" };
+const tdStyle = { padding: "20px 15px", borderBottom: "1px solid #e2e8f0", fontSize: "16px" };
