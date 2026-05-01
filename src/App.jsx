@@ -108,8 +108,6 @@ const Utils = {
 
 // ============================================================================
 // 3. CHIẾN LƯỢC KINH DOANH CHUẨN HÓA DATA 100% TỪ FILE
-// (Segments: Corporate, Leisure, Group) 
-// (Channels: Direct - Website, Direct - Phone/Walk-in, Booking.com, Agoda, Expedia, Corporate Contract, Wholesale / Tour Operator)
 // ============================================================================
 const STRATEGIES = {
   Weekday: {
@@ -328,25 +326,24 @@ export default function App() {
     const maxExtraDailyRooms = Math.max(0, targetDailyRooms - historicalSoldRooms);
     const extraMonthlyRoomNightsToSell = maxExtraDailyRooms * CONFIG.DAYS_IN_MONTH; 
 
-    // ĐỊNH GIÁ 5 TẦNG
     let leadMultiplier = 1.0;
     let leadReason = "";
 
     if (simLeadTime <= 3) {
       leadMultiplier = 1.15;
-      leadReason = "[Tier 1 - Khẩn cấp]: Cầu cận ngày. Khuyến nghị TĂNG GIÁ 15%. (Tránh áp dụng cho OTA để giảm rủi ro Leakage)";
+      leadReason = "[Tier 1 - Khẩn cấp]: Nhu cầu vọt lên sát ngày check-in. Khuyến nghị TĂNG GIÁ 15% để tối ưu hóa Yield.";
     } else if (simLeadTime <= 7) {
       leadMultiplier = 1.05;
-      leadReason = "[Tier 2 - Ngắn hạn]: Khách đã chốt lịch trình. TĂNG GIÁ 5%. (Phù hợp bán qua Direct Website)";
+      leadReason = "[Tier 2 - Ngắn hạn]: Khách hàng đã chốt vé máy bay. Khuyến nghị TĂNG GIÁ 5% để thu hồi thặng dư tiêu dùng.";
     } else if (simLeadTime <= 14) {
       leadMultiplier = 1.00;
-      leadReason = "[Tier 3 - Tiêu chuẩn]: Cung cầu cân bằng. DUY TRÌ GIÁ BASE. (Ổn định công suất nhóm Corporate/Group)";
+      leadReason = "[Tier 3 - Tiêu chuẩn]: Trạng thái cung cầu cân bằng. DUY TRÌ GIÁ BASE để duy trì Booking Velocity.";
     } else if (simLeadTime <= 21) {
       leadMultiplier = 0.95;
-      leadReason = "[Tier 4 - Đặt sớm]: Kích cầu. GIẢM GIÁ 5%. Tích hợp các gói Ancillary (Spa/Tour) để gia tăng RevPAC.";
+      leadReason = "[Tier 4 - Đặt sớm]: Ưu đãi kích cầu. GIẢM GIÁ 5%, kèm điều khoản hoàn hủy chặt chẽ (Phạt 50%).";
     } else {
       leadMultiplier = 0.90;
-      leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume. GIẢM GIÁ 10%, áp dụng Non-Refundable để khắc phục triệt để tỷ lệ hủy ảo.";
+      leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume sớm. GIẢM GIÁ 10%, bắt buộc áp dụng Non-refundable 100%.";
     }
 
     const pickupProgress = (30 - simLeadTime) / 29;
@@ -359,7 +356,10 @@ export default function App() {
       const pickupRooms = Math.round(roomTargetShare * pickupProgress);
       
       const dynamicSold = Math.min(roomBase.capacity, Math.round(roomBase.capacity * (CONFIG.HISTORICAL_AVG_OCCUPANCY/100)) + pickupRooms);
-      const checkOutRooms = Math.round(roomBase.capacity * (CONFIG.HISTORICAL_AVG_OCCUPANCY/100) * 0.2);
+      
+      // LOGIC ĐÃ SỬA: Lượng khách trả tính theo tỷ lệ của lượng phòng ĐÃ BÁN HIỆN TẠI (dynamicSold)
+      const checkOutRooms = Math.round(dynamicSold * 0.2);
+      
       const dynamicAvai = Math.max(0, Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms));
 
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
