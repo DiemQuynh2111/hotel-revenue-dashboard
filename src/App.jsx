@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 
 // ============================================================================
-// MODULE 1: UTILITIES (Tiện ích dùng chung)
+// MODULE 1: UTILITIES
 // ============================================================================
 const Utils = {
   currency: (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v || 0),
@@ -19,11 +19,13 @@ const CONFIG = {
   MC_ITERATIONS: 2000,
   DAYS_IN_MONTH: 31,
   TOTAL_ROOMS: 80,
-  ANCILLARY_RATIO: 0.18
+  ANCILLARY_RATIO: 0.18,
+  MC_PARAMS: { DEMAND_MEAN: 0.85, DEMAND_STD_DEV: 0.05, CANCEL_MEAN: 0.10, CANCEL_STD_DEV: 0.02 },
+  DEFAULT_METRICS: { forecast: 125494, onHand: 110744 }
 };
 
 // ============================================================================
-// MODULE 2: DATA EXTRACTOR (Xử lý dữ liệu ĐỘC LẬP)
+// MODULE 2: DATA EXTRACTOR (XỬ LÝ DỮ LIỆU FILE)
 // ============================================================================
 const DataExtractor = {
   readFile: (file) => {
@@ -31,8 +33,7 @@ const DataExtractor = {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
-          const data = new Uint8Array(e.target.result);
-          resolve(XLSX.read(data, { type: "array", cellDates: true }));
+          resolve(XLSX.read(new Uint8Array(e.target.result), { type: "array", cellDates: true }));
         } catch (err) { resolve(null); }
       };
       reader.onerror = () => resolve(null);
@@ -43,7 +44,6 @@ const DataExtractor = {
   getSheetData: (workbook, keyword, columnKeywords = []) => {
     if (!workbook) return [];
     let sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes(keyword.toLowerCase()));
-    
     if (!sheetName && workbook.SheetNames.length === 1) sheetName = workbook.SheetNames[0];
 
     if (!sheetName) {
@@ -56,7 +56,6 @@ const DataExtractor = {
         return false;
       });
     }
-
     if (!sheetName) return [];
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
   },
@@ -67,8 +66,8 @@ const DataExtractor = {
       DataExtractor.readFile(forecastFile)
     ]);
 
-    // 1. QUÉT DỰ BÁO
-    let metrics = { forecast: 125494, onHand: 110744 };
+    // 1. Quét Forecast
+    let metrics = { ...CONFIG.DEFAULT_METRICS };
     const forecastData = DataExtractor.getSheetData(forecastWb, "summary", ["forecast", "hand"]);
     if (forecastData.length > 0) {
       forecastData.forEach(row => {
@@ -81,14 +80,12 @@ const DataExtractor = {
       });
     }
 
-    // 2. QUÉT TỒN KHO THÁNG 1/2026
+    // 2. Quét RoomInventory
     const invData = DataExtractor.getSheetData(histWb, "inventory", ["available", "total"]);
-    
     let rawStats = {
       Weekday: { RT_STD: { cap:0, avai:0, days:new Set() }, RT_DLX: { cap:0, avai:0, days:new Set() }, RT_STE: { cap:0, avai:0, days:new Set() } },
       Weekend: { RT_STD: { cap:0, avai:0, days:new Set() }, RT_DLX: { cap:0, avai:0, days:new Set() }, RT_STE: { cap:0, avai:0, days:new Set() } }
     };
-
     let syncStatus = false;
 
     invData.forEach(row => {
@@ -128,7 +125,7 @@ const DataExtractor = {
       }
     });
 
-    // 3. TÍNH TRUNG BÌNH RA ĐẦU RA
+    // 3. Đóng gói kết quả
     let finalInventory = { Weekday: {}, Weekend: {} };
     const ROOM_NAMES = { RT_STD: "STANDARD ROOM", RT_DLX: "DELUXE ROOM", RT_STE: "EXECUTIVE SUITE" };
     const BASE_PRICES = { RT_STD: 95, RT_DLX: 129, RT_STE: 220 }; 
@@ -161,14 +158,14 @@ const DataExtractor = {
 // ============================================================================
 const STRATEGIES = {
   Weekday: {
-    RT_STD: { who: ["1. Corporate (B2B): Tạo nền tảng công suất.", "2. Group: Khai thác đoàn dài ngày."], where: ["Direct B2B: Miễn hoa hồng.", "OTA: Phân phối phút chót."], ancillary: "MICE Bundle (F&B + Laundry)" },
-    RT_DLX: { who: ["1. Leisure: Nguồn thu chủ lực giữa tuần.", "2. MICE: Tận dụng đoàn sự kiện nhỏ."], where: ["Direct Website: Chặn hủy ảo."], ancillary: "Spa & Tour Bundle" },
+    RT_STD: { who: ["1. Corporate (B2B): Tạo nền tảng công suất."], where: ["Direct B2B: Miễn hoa hồng.", "OTA: Phân phối phút chót."], ancillary: "MICE Bundle (F&B + Laundry)" },
+    RT_DLX: { who: ["1. Leisure: Nguồn thu chủ lực giữa tuần."], where: ["Direct Website: Chặn hủy ảo."], ancillary: "Spa & Tour Bundle" },
     RT_STE: { who: ["1. MICE VIPs: Quản lý cấp cao sự kiện."], where: ["Direct Phone: Tuyệt đối không bán Suite qua OTA."], ancillary: "Luxury Service Bundle" }
   },
   Weekend: {
-    RT_STD: { who: ["1. Leisure: Cầu du lịch tự túc cuối tuần cao."], where: ["OTA: Kéo Volume mạnh kèm Non-refundable.", "Direct Website: Kéo khách thành viên."], ancillary: "Buffet Bundle (F&B)" },
+    RT_STD: { who: ["1. Leisure: Cầu du lịch tự túc cuối tuần cao."], where: ["OTA: Kéo Volume mạnh kèm NRF.", "Direct Web: Kéo khách thành viên."], ancillary: "Buffet Bundle (F&B)" },
     RT_DLX: { who: ["1. Leisure Couples: Sẵn sàng chi trả cao."], where: ["Direct Website: Chạy gói Combo Weekend."], ancillary: "Spa Retreat Package" },
-    RT_STE: { who: ["1. Leisure VIP: Lấp đầy Suite đạt đỉnh."], where: ["Direct Phone: Bảo vệ dòng tiền, triệt tiêu No-show."], ancillary: "Premium Heritage Bundle" }
+    RT_STE: { who: ["1. Leisure VIP: Lấp đầy Suite đạt đỉnh."], where: ["Direct Phone: Bảo vệ dòng tiền."], ancillary: "Premium Heritage Bundle" }
   }
 };
 
@@ -189,13 +186,12 @@ export default function App() {
   const handleProcessData = async () => {
     if (!historyFile || !forecastFile) return alert("Hệ thống yêu cầu cung cấp đủ 2 file dữ liệu.");
     setIsProcessing(true);
-    
     const processedData = await DataExtractor.processRealData(historyFile, forecastFile);
     setAppData(processedData);
     setIsProcessing(false);
   };
 
-  // ĐỘNG CƠ PHÂN TÍCH
+  // ĐỘNG CƠ PHÂN TÍCH VÀ MÔ PHỎNG ĐỘNG LỰC HỌC TỒN KHO
   const analyticsData = useMemo(() => {
     if (!appData || !appData.inventoryData) return null;
 
@@ -205,7 +201,7 @@ export default function App() {
     
     const baseOccupancy = (totalSoldToday / totalDailyRooms) * 100;
 
-    // Quỹ phòng cần bán thêm theo mục tiêu (Cố định, không đổi theo Lead Time)
+    // Tính lượng phòng đêm cần bán thêm (Mục tiêu tổng)
     const targetDailyRooms = Math.round(totalDailyRooms * (targetOccupancy / 100));
     const maxExtraDailyRooms = Math.max(0, targetDailyRooms - totalSoldToday);
     const extraMonthlyRoomNightsToSell = maxExtraDailyRooms * CONFIG.DAYS_IN_MONTH; 
@@ -231,40 +227,43 @@ export default function App() {
       leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume. GIẢM GIÁ 10%, kèm Non-refundable.";
     }
 
-    // Tiến độ Booking (Pickup Progress): Lead Time = 30 -> 0%, Lead Time = 1 -> 100%
+    // TÍNH TOÁN CẬP NHẬT ĐÃ BÁN & KHÁCH TRẢ THEO LEAD TIME
+    // Tiến độ Lead Time (30 ngày -> 0%; 1 ngày -> 100%)
     const pickupProgress = (30 - simLeadTime) / 29;
 
     const processedRooms = ["RT_STD", "RT_DLX", "RT_STE"].map(key => {
       const roomBase = baseData[key];
       const strat = STRATEGIES[selectedDayType][key];
       
-      // 1. TÍNH ĐÃ BÁN (CẬP NHẬT THEO LEAD TIME)
+      // Tính Đã bán (Cập nhật dần theo tiến độ Lead Time)
       const roomTargetShare = Math.round(maxExtraDailyRooms * (roomBase.capacity / totalDailyRooms));
       const pickupRooms = Math.round(roomTargetShare * pickupProgress);
       const dynamicSold = Math.min(roomBase.capacity, roomBase.sold + pickupRooms);
 
-      // 2. TÍNH KHÁCH TRẢ PHÒNG (Giả định Turnover = 25% số đang ở)
+      // Tính Khách trả (Giả định Turnover Rate 25% số khách đang ở)
       const checkOutRooms = Math.round(dynamicSold * 0.25);
 
-      // 3. TÍNH SẴN BÁN (Sức chứa - Đã bán + Khách trả)
-      const dynamicAvai = Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms);
+      // Tính Sẵn bán (Công thức Front Office chuẩn: Sức chứa - Đã bán + Khách trả)
+      const dynamicAvai = Math.max(0, Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms));
 
-      // Tính giá
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
       const priceDiff = ((dynamicAdr / roomBase.oldPrice) - 1) * 100;
 
       return { key, dynamicSold, checkOutRooms, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
     });
 
-    // MÔ PHỎNG MONTE CARLO DỰA VÀO OCCUPANCY VÀ GIÁ GỐC (Tách biệt khỏi biến động của Lead Time)
+    // MÔ PHỎNG MONTE CARLO
     let successfulRoomRev = 0;
     const avgBaseAdr = processedRooms.reduce((sum, r) => sum + r.oldPrice, 0) / 3;
 
     for (let i = 0; i < CONFIG.MC_ITERATIONS; i++) {
-      const demandCapture = Utils.randomNormal(0.85, 0.05);
-      const cancelRatio = Utils.randomNormal(0.10, 0.02);
+      const demandCapture = Utils.randomNormal(CONFIG.MC_PARAMS.DEMAND_MEAN, CONFIG.MC_PARAMS.DEMAND_STD_DEV);
+      const cancelRatio = Utils.randomNormal(CONFIG.MC_PARAMS.CANCEL_MEAN, CONFIG.MC_PARAMS.CANCEL_STD_DEV);
       
-      const conversionRate = Math.max(0, Math.min(1, demandCapture)) * (1 - Math.max(0, Math.min(1, cancelRatio)));
+      const boundedDemand = Math.max(0, Math.min(1, demandCapture));
+      const boundedCancel = Math.max(0, Math.min(1, cancelRatio));
+
+      const conversionRate = boundedDemand * (1 - boundedCancel);
       const simulatedMonthlyRoomsSold = extraMonthlyRoomNightsToSell * conversionRate;
       
       successfulRoomRev += (simulatedMonthlyRoomsSold * avgBaseAdr);
@@ -342,7 +341,7 @@ export default function App() {
               </div>
               <input type="range" min="40" max="95" value={targetOccupancy} onChange={(e) => setTargetOccupancy(Number(e.target.value))} style={STYLES.slider} />
               <div style={STYLES.helperText}>
-                Gốc Lịch sử (từ File): <strong>{baseOccupancy.toFixed(1)}%</strong>. Cần bán thêm trong tháng: <strong style={{color:"#1e3a8a"}}>{Utils.formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng (Room Nights)</strong>.
+                Gốc Lịch sử (từ File): <strong>{baseOccupancy.toFixed(1)}%</strong>. Cần bán thêm: <strong style={{color:"#1e3a8a"}}>{Utils.formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng</strong>.
               </div>
             </div>
 
@@ -379,9 +378,9 @@ export default function App() {
                   <tr key={room.key} style={STYLES.tableRow}>
                     <td style={STYLES.td}>
                       <div style={STYLES.roomName}>{room.name}</div>
-                      <div style={STYLES.roomStat}>Sức chứa: <strong>{room.capacity} phòng</strong></div>
+                      <div style={STYLES.roomStat}>Sức chứa (Capacity): <strong>{room.capacity} phòng</strong></div>
                       
-                      {/* ĐÃ BÁN VÀ KHÁCH TRẢ CẬP NHẬT THEO LEAD TIME */}
+                      {/* TÍNH NĂNG CẬP NHẬT THEO LEAD TIME ĐÃ ĐƯỢC PHỤC HỒI */}
                       <div style={{ fontSize: "12px", color: "#1e40af", marginBottom: "4px", fontWeight: "700" }}>
                         Đã bán (Cập nhật): <strong>{room.dynamicSold} phòng</strong>
                       </div>
@@ -393,7 +392,7 @@ export default function App() {
                         Sẵn bán (Available): {Utils.formatNum(room.avai)}
                       </div>
                     </td>
-                    <td style={STYLES.td}>
+                    <td style={tdStyle}>
                       <div style={STYLES.priceOld}>{Utils.currency(room.oldPrice)}</div>
                       <div style={STYLES.priceNew}>{Utils.currency(room.dynamicAdr)}</div>
                       <div style={{...STYLES.priceDiff, color: room.priceDiff >= 0 ? "#059669" : "#dc2626"}}>
@@ -422,9 +421,9 @@ export default function App() {
             <div style={STYLES.impactGrid}>
               <div style={STYLES.impactTextCol}>
                 <p style={STYLES.impactDesc}>
-                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn (Normal Distribution) để định lượng rủi ro kinh tế học.
+                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn để định lượng rủi ro kinh tế học: Lực cầu thị trường và Tỷ lệ hủy phòng ảo.
                   <br/><br/>
-                  <strong>Lưu ý:</strong> Doanh thu kỳ vọng tính theo mức giá cơ sở (Base Rate), độc lập với biến động giá Lead Time ngắn hạn. Lead Time chỉ dùng kê toa cho rổ phòng thực tại, trong khi tổng doanh thu phản ánh <strong>Mục tiêu Công suất</strong> dài hạn.
+                  Kết hợp <strong>Định giá đa tầng</strong> và <strong>Mục tiêu Công suất {targetOccupancy}%</strong>, Khối Kinh doanh có cơ sở phá vỡ giới hạn dự báo tĩnh.
                 </p>
                 <div style={STYLES.impactBaseBox}>
                   <div style={STYLES.impactBaseLabel}>MỐC DỰ BÁO TĨNH (BASELINE)</div>
@@ -460,7 +459,7 @@ export default function App() {
 }
 
 // ============================================================================
-// 5. THEME & STYLES
+// 5. THEME & STYLES 
 // ============================================================================
 const STYLES = {
   layoutCenter: { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", position: "relative", padding: "20px", fontFamily: "system-ui, sans-serif" },
@@ -532,3 +531,4 @@ const STYLES = {
   impactSubBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1" },
   impactAncilBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1", gridColumn: "1 / -1" }
 };
+const tdStyle = { padding: "25px 20px", verticalAlign: "top" };
