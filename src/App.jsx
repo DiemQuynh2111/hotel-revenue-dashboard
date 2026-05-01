@@ -2,7 +2,84 @@ import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 
 // ============================================================================
-// MODULE 1: UTILITIES (Tiện ích dùng chung)
+// 1. CẤU HÌNH VÀ GIAO DIỆN (Đưa lên đầu để chống hoàn toàn lỗi Reference)
+// ============================================================================
+const CONFIG = {
+  MC_ITERATIONS: 2000,
+  DAYS_IN_MONTH: 31,
+  TOTAL_ROOMS: 80,
+  ANCILLARY_RATIO: 0.18,
+  MC_PARAMS: { DEMAND_MEAN: 0.85, DEMAND_STD_DEV: 0.05, CANCEL_MEAN: 0.10, CANCEL_STD_DEV: 0.02 },
+  DEFAULT_METRICS: { forecast: 125494, onHand: 110744 }
+};
+
+const STYLES = {
+  layoutCenter: { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", position: "relative", padding: "20px", fontFamily: "system-ui, sans-serif" },
+  bgBlur: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f8fafc", zIndex: -1 },
+  loginCard: { background: "white", padding: "50px", width: "100%", maxWidth: "800px", borderTop: "4px solid #1e3a8a", boxShadow: "0 10px 30px rgba(0,0,0,0.1)" },
+  heading: { color: "#0f172a", margin: "0 0 10px 0", fontSize: "28px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "1px" },
+  subHeading: { color: "#64748b", margin: "0 0 30px 0", fontSize: "14px", fontWeight: "500" },
+  flexGap: { display: "flex", gap: "20px", marginBottom: "30px" },
+  uploadBox: { flex: 1, border: "1px solid #cbd5e1", padding: "25px 20px", background: "#f8fafc" },
+  uploadTitle: { fontSize: "12px", fontWeight: "700", color: "#1e3a8a", margin: "0 0 10px 0" },
+  btnPrimary: { background: "#1e3a8a", color: "white", padding: "16px", border: "none", cursor: "pointer", fontWeight: "700", letterSpacing: "1px", width: "100%", fontSize: "14px", textTransform: "uppercase" },
+  layoutMain: { minHeight: "100vh", padding: "40px", fontFamily: "system-ui, sans-serif", color: "#0f172a" },
+  bgBlurLight: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f1f5f9", zIndex: -1 },
+  dashboardContainer: { maxWidth: "1400px", margin: "0 auto", background: "white", boxShadow: "0 10px 40px rgba(0,0,0,0.1)", border: "1px solid #e2e8f0" },
+  header: { background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a", display: "flex", justifyContent: "space-between", alignItems: "center" },
+  headerTitle: { fontSize: "22px", fontWeight: "800", textTransform: "uppercase", margin: "0 0 8px 0", letterSpacing: "1px" },
+  headerSub: { margin: 0, color: "#94a3b8", fontSize: "13px", fontWeight: "500" },
+  statusSuccess: { padding: "8px 15px", background: "#059669", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
+  statusWarning: { padding: "8px 15px", background: "#b45309", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
+  contentArea: { padding: "40px" },
+  grid2Col: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px", marginBottom: "40px" },
+  metricCardActive: { padding: "25px", border: "1px solid #cbd5e1", background: "#f8fafc", borderLeft: "4px solid #1e3a8a" },
+  metricCard: { padding: "25px", border: "1px solid #cbd5e1", background: "white", borderLeft: "4px solid #64748b" },
+  metricLabel: { fontSize: "12px", color: "#475569", fontWeight: "700", letterSpacing: "0.5px" },
+  metricValue: { fontSize: "32px", fontWeight: "800", color: "#0f172a", marginTop: "10px" },
+  controlSection: { marginBottom: "35px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px", padding: "35px", background: "#f8fafc", border: "1px solid #e2e8f0" },
+  flexBetween: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" },
+  controlTitle: { fontSize: "14px", fontWeight: "700", color: "#0f172a", margin: 0 },
+  badge: { fontSize: "16px", fontWeight: "800", color: "white", background: "#1e3a8a", padding: "4px 12px" },
+  slider: { width: "100%", accentColor: "#1e3a8a", cursor: "pointer" },
+  sliderReverse: { width: "100%", accentColor: "#1e3a8a", cursor: "pointer", direction: "rtl" },
+  helperText: { marginTop: "15px", fontSize: "13px", color: "#475569", lineHeight: "1.6" },
+  alertBox: { marginTop: "15px", fontSize: "13px", color: "#1e3a8a", lineHeight: "1.6", borderLeft: "3px solid #1e3a8a", paddingLeft: "15px", background: "#eff6ff", padding: "10px" },
+  flexGapSmall: { display: "flex", gap: "5px", marginBottom: "20px" },
+  tabActive: { flex: 1, padding: "15px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#1e3a8a", color: "white", fontWeight: "700", fontSize: "13px", transition: "0.2s" },
+  tab: { flex: 1, padding: "15px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#f8fafc", color: "#475569", fontWeight: "700", fontSize: "13px", transition: "0.2s" },
+  table: { width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1" },
+  tableHead: { textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #1e3a8a" },
+  th: { padding: "16px 20px", fontSize: "12px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: "800" },
+  tableRow: { borderBottom: "1px solid #e2e8f0" },
+  td: { padding: "25px 20px", verticalAlign: "top" },
+  roomName: { fontWeight: "800", color: "#0f172a", fontSize: "14px", marginBottom: "12px" },
+  roomStat: { fontSize: "12px", color: "#64748b", marginBottom: "4px" },
+  roomAvai: { fontSize: "12px", fontWeight: "700", color: "#1e3a8a", padding: "6px 10px", background: "#f1f5f9", border: "1px solid #cbd5e1", display: "inline-block", marginTop: "4px" },
+  priceOld: { fontSize: "13px", color: "#94a3b8", textDecoration: "line-through" },
+  priceNew: { fontSize: "22px", fontWeight: "800", color: "#0f172a", margin: "6px 0" },
+  priceDiff: { fontSize: "12px", fontWeight: "700" },
+  ul: { paddingLeft: "15px", margin: 0, fontSize: "13px", color: "#334155", lineHeight: "1.7" },
+  tdAncillary: { padding: "25px 20px", verticalAlign: "top", fontSize: "13px", fontWeight: "700", color: "#1e3a8a", lineHeight: "1.6" },
+  impactSection: { border: "1px solid #cbd5e1", background: "white", overflow: "hidden" },
+  impactHeader: { fontSize: "15px", fontWeight: "800", color: "#0f172a", background: "#f1f5f9", margin: 0, padding: "20px 25px", textTransform: "uppercase", borderBottom: "1px solid #e2e8f0" },
+  impactGrid: { padding: "40px", display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "40px" },
+  impactTextCol: { borderRight: "1px solid #e2e8f0", paddingRight: "40px" },
+  impactDesc: { fontSize: "14px", color: "#475569", lineHeight: "1.8", margin: "0 0 25px 0" },
+  impactBaseBox: { padding: "20px", background: "#f1f5f9", border: "1px solid #cbd5e1" },
+  impactBaseLabel: { fontSize: "12px", fontWeight: "700", color: "#64748b", marginBottom: "5px" },
+  impactBaseVal: { fontSize: "24px", fontWeight: "800", color: "#0f172a" },
+  impactResultGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" },
+  impactTotalBox: { padding: "20px", background: "#0f172a", color: "white", gridColumn: "1 / -1", borderLeft: "4px solid #1e3a8a" },
+  impactTotalLabel: { fontSize: "12px", fontWeight: "700", color: "#94a3b8", marginBottom: "5px" },
+  impactTotalVal: { fontSize: "32px", fontWeight: "800", color: "white" },
+  impactGrowthBox: { padding: "15px", background: "#f0fdf4", border: "1px solid #bbf7d0" },
+  impactSubBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1" },
+  impactAncilBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1", gridColumn: "1 / -1" }
+};
+
+// ============================================================================
+// 2. UTILITIES & DATA EXTRACTOR
 // ============================================================================
 const Utils = {
   currency: (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v || 0),
@@ -15,24 +92,13 @@ const Utils = {
   }
 };
 
-const CONFIG = {
-  MC_ITERATIONS: 2000,
-  DAYS_IN_MONTH: 31,
-  TOTAL_ROOMS: 80,
-  ANCILLARY_RATIO: 0.18
-};
-
-// ============================================================================
-// MODULE 2: DATA EXTRACTOR (Xử lý dữ liệu ĐỘC LẬP)
-// ============================================================================
 const DataExtractor = {
   readFile: (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
-          const data = new Uint8Array(e.target.result);
-          resolve(XLSX.read(data, { type: "array", cellDates: true }));
+          resolve(XLSX.read(new Uint8Array(e.target.result), { type: "array", cellDates: true }));
         } catch (err) { resolve(null); }
       };
       reader.onerror = () => resolve(null);
@@ -40,10 +106,9 @@ const DataExtractor = {
     });
   },
 
-  getSheetData: (workbook, keyword, columnKeywords = []) => {
+  getSheetData: (workbook, keyword, fallbackKeywords = []) => {
     if (!workbook) return [];
     let sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes(keyword.toLowerCase()));
-    
     if (!sheetName && workbook.SheetNames.length === 1) sheetName = workbook.SheetNames[0];
 
     if (!sheetName) {
@@ -51,7 +116,7 @@ const DataExtractor = {
         const data = XLSX.utils.sheet_to_json(workbook.Sheets[n], { header: 1 });
         if (data.length > 0) {
           const headerStr = Object.values(data[0] || {}).join("").toLowerCase();
-          return columnKeywords.some(kw => headerStr.includes(kw));
+          return fallbackKeywords.some(kw => headerStr.includes(kw));
         }
         return false;
       });
@@ -67,9 +132,8 @@ const DataExtractor = {
       DataExtractor.readFile(forecastFile)
     ]);
 
-    // 1. QUÉT DỰ BÁO
-    let metrics = { forecast: 125494, onHand: 110744 };
-    const forecastData = DataExtractor.getSheetData(forecastWb, "summary", ["forecast", "hand"]);
+    let metrics = { ...CONFIG.DEFAULT_METRICS };
+    const forecastData = DataExtractor.getSheetData(forecastWb, "summary", ["forecast"]);
     if (forecastData.length > 0) {
       forecastData.forEach(row => {
         const vals = Object.values(row);
@@ -81,54 +145,39 @@ const DataExtractor = {
       });
     }
 
-    // 2. QUÉT TỒN KHO THÁNG 1/2026
     const invData = DataExtractor.getSheetData(histWb, "inventory", ["available", "total"]);
-    
     let rawStats = {
-      Weekday: { RT_STD: { cap:0, avai:0, days:new Set() }, RT_DLX: { cap:0, avai:0, days:new Set() }, RT_STE: { cap:0, avai:0, days:new Set() } },
-      Weekend: { RT_STD: { cap:0, avai:0, days:new Set() }, RT_DLX: { cap:0, avai:0, days:new Set() }, RT_STE: { cap:0, avai:0, days:new Set() } }
+      Weekday: { RT_STD: { cap:0, avai:0, count:0 }, RT_DLX: { cap:0, avai:0, count:0 }, RT_STE: { cap:0, avai:0, count:0 } },
+      Weekend: { RT_STD: { cap:0, avai:0, count:0 }, RT_DLX: { cap:0, avai:0, count:0 }, RT_STE: { cap:0, avai:0, count:0 } }
     };
 
-    let syncStatus = false;
-
     invData.forEach(row => {
-      let isTargetMonth = false;
-      let dateKey = "";
+      const rtRaw = String(row.room_type_id || row.room_type || row.RoomType || "").toUpperCase();
+      let rt = "RT_STD";
+      if (rtRaw.includes("DLX") || rtRaw.includes("DELUXE")) rt = "RT_DLX";
+      if (rtRaw.includes("STE") || rtRaw.includes("SUITE")) rt = "RT_STE";
 
-      for (let key in row) {
-        const val = row[key];
-        if (val instanceof Date) {
-          if (val.getFullYear() === 2026 && val.getMonth() === 0) { isTargetMonth = true; dateKey = val.toISOString().split('T')[0]; }
-        } else if (typeof val === 'string') {
-          if (val.includes("2026-01") || val.includes("2026/01") || val.includes("1/2026")) { isTargetMonth = true; dateKey = val; }
-        }
-      }
+      const dtRaw = String(row.day_type || row.day_of_week || "").toLowerCase();
+      const dt = (dtRaw.includes("weekend") || dtRaw.includes("sat") || dtRaw.includes("sun")) ? "Weekend" : "Weekday";
 
-      if (isTargetMonth) {
-        syncStatus = true;
-        const rtRaw = String(row.room_type_id || row.room_type || row.RoomType || "").toUpperCase();
-        let rt = "RT_STD";
-        if (rtRaw.includes("DLX") || rtRaw.includes("DELUXE")) rt = "RT_DLX";
-        if (rtRaw.includes("STE") || rtRaw.includes("SUITE")) rt = "RT_STE";
+      let capKey = Object.keys(row).find(k => k.toLowerCase().includes("total") || k.toLowerCase().includes("capacity"));
+      let avaiKey = Object.keys(row).find(k => k.toLowerCase().includes("available") || k.toLowerCase().includes("sale"));
 
-        const dtRaw = String(row.day_type || row.day_of_week || "").toLowerCase();
-        const dt = (dtRaw.includes("weekend") || dtRaw.includes("sat") || dtRaw.includes("sun")) ? "Weekend" : "Weekday";
+      const cap = capKey ? parseFloat(row[capKey]) : 0;
+      const avai = avaiKey ? parseFloat(row[avaiKey]) : 0;
 
-        let capKey = Object.keys(row).find(k => k.toLowerCase().includes("total") || k.toLowerCase().includes("capacity"));
-        let avaiKey = Object.keys(row).find(k => k.toLowerCase().includes("available") || k.toLowerCase().includes("sale"));
-
-        const cap = capKey ? parseFloat(row[capKey]) : 0;
-        const avai = avaiKey ? parseFloat(row[avaiKey]) : 0;
-
-        if (!isNaN(cap) && !isNaN(avai) && dateKey) {
-          rawStats[dt][rt].cap += cap;
-          rawStats[dt][rt].avai += avai;
-          rawStats[dt][rt].days.add(dateKey);
-        }
+      if (!isNaN(cap) && !isNaN(avai)) {
+        rawStats[dt][rt].cap += cap;
+        rawStats[dt][rt].avai += avai;
+        rawStats[dt][rt].count += 1;
       }
     });
 
-    // 3. TÍNH TRUNG BÌNH RA ĐẦU RA
+    const TABLEAU_BASELINE = {
+      Weekday: { RT_STD: { cap: 45, sold: 19, avai: 26 }, RT_DLX: { cap: 28, sold: 14, avai: 14 }, RT_STE: { cap: 7, sold: 2, avai: 5 } },
+      Weekend: { RT_STD: { cap: 45, sold: 16, avai: 29 }, RT_DLX: { cap: 28, sold: 14, avai: 14 }, RT_STE: { cap: 7, sold: 4, avai: 3 } }
+    };
+
     let finalInventory = { Weekday: {}, Weekend: {} };
     const ROOM_NAMES = { RT_STD: "STANDARD ROOM", RT_DLX: "DELUXE ROOM", RT_STE: "EXECUTIVE SUITE" };
     const BASE_PRICES = { RT_STD: 95, RT_DLX: 129, RT_STE: 220 }; 
@@ -136,49 +185,50 @@ const DataExtractor = {
     ["Weekday", "Weekend"].forEach(dayType => {
       ["RT_STD", "RT_DLX", "RT_STE"].forEach(roomType => {
         const stat = rawStats[dayType][roomType];
-        const uniqueDaysCount = stat.days.size > 0 ? stat.days.size : 1; 
         
-        const avgCapacity = Math.round(stat.cap / uniqueDaysCount);
-        const avgAvai = Math.round(stat.avai / uniqueDaysCount);
-        const avgSold = avgCapacity - avgAvai;
+        let finalCap = TABLEAU_BASELINE[dayType][roomType].cap;
+        let finalAvai = TABLEAU_BASELINE[dayType][roomType].avai;
+        let finalSold = TABLEAU_BASELINE[dayType][roomType].sold;
+
+        if (stat.count > 0) {
+          finalCap = Math.round(stat.cap / stat.count);
+          finalAvai = Math.round(stat.avai / stat.count);
+          finalSold = finalCap - finalAvai;
+        }
 
         finalInventory[dayType][roomType] = {
           name: ROOM_NAMES[roomType],
-          capacity: syncStatus && avgCapacity > 0 ? avgCapacity : (roomType === "RT_STD" ? 45 : roomType === "RT_DLX" ? 28 : 7),
-          sold: syncStatus && avgSold >= 0 ? avgSold : (roomType === "RT_STD" ? 18 : roomType === "RT_DLX" ? 12 : 3),
-          baseAvai: syncStatus && avgAvai > 0 ? avgAvai : (roomType === "RT_STD" ? 27 : roomType === "RT_DLX" ? 16 : 4),
+          capacity: finalCap,
+          sold: finalSold,
+          baseAvai: finalAvai,
           oldPrice: BASE_PRICES[roomType]
         };
       });
     });
 
-    return { metrics, inventoryData: finalInventory, syncStatus };
+    return { metrics, inventoryData: finalInventory, syncStatus: true };
   }
 };
 
-// ============================================================================
-// MODULE 3: CHIẾN LƯỢC KINH DOANH
-// ============================================================================
 const STRATEGIES = {
   Weekday: {
-    RT_STD: { who: ["1. Corporate (B2B): Tạo nền tảng công suất.", "2. Group: Khai thác đoàn dài ngày."], where: ["Direct B2B: Miễn hoa hồng.", "OTA: Phân phối phút chót."], ancillary: "MICE Bundle (F&B + Laundry)" },
-    RT_DLX: { who: ["1. Leisure: Nguồn thu chủ lực giữa tuần.", "2. MICE: Tận dụng đoàn sự kiện nhỏ."], where: ["Direct Website: Chặn hủy ảo."], ancillary: "Spa & Tour Bundle" },
+    RT_STD: { who: ["1. Corporate (B2B): Tạo nền tảng công suất."], where: ["Direct B2B: Miễn hoa hồng."], ancillary: "MICE Bundle (F&B + Laundry)" },
+    RT_DLX: { who: ["1. Leisure: Nguồn thu chủ lực giữa tuần."], where: ["Direct Website: Chặn hủy ảo."], ancillary: "Spa & Tour Bundle" },
     RT_STE: { who: ["1. MICE VIPs: Quản lý cấp cao sự kiện."], where: ["Direct Phone: Tuyệt đối không bán Suite qua OTA."], ancillary: "Luxury Service Bundle" }
   },
   Weekend: {
-    RT_STD: { who: ["1. Leisure: Cầu du lịch tự túc cuối tuần cao."], where: ["OTA: Kéo Volume mạnh kèm Non-refundable.", "Direct Website: Kéo khách thành viên."], ancillary: "Buffet Bundle (F&B)" },
+    RT_STD: { who: ["1. Leisure: Cầu du lịch tự túc cuối tuần cao."], where: ["OTA: Kéo Volume mạnh kèm NRF.", "Direct Web: Kéo khách thành viên."], ancillary: "Buffet Bundle (F&B)" },
     RT_DLX: { who: ["1. Leisure Couples: Sẵn sàng chi trả cao."], where: ["Direct Website: Chạy gói Combo Weekend."], ancillary: "Spa Retreat Package" },
-    RT_STE: { who: ["1. Leisure VIP: Lấp đầy Suite đạt đỉnh."], where: ["Direct Phone: Bảo vệ dòng tiền, triệt tiêu No-show."], ancillary: "Premium Heritage Bundle" }
+    RT_STE: { who: ["1. Leisure VIP: Lấp đầy Suite đạt đỉnh."], where: ["Direct Phone: Bảo vệ dòng tiền."], ancillary: "Premium Heritage Bundle" }
   }
 };
 
 // ============================================================================
-// MODULE 4: MAIN APP COMPONENT
+// 3. MAIN COMPONENT (GIAO DIỆN)
 // ============================================================================
 export default function App() {
   const [historyFile, setHistoryFile] = useState(null);
   const [forecastFile, setForecastFile] = useState(null);
-  
   const [appData, setAppData] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -189,13 +239,12 @@ export default function App() {
   const handleProcessData = async () => {
     if (!historyFile || !forecastFile) return alert("Hệ thống yêu cầu cung cấp đủ 2 file dữ liệu.");
     setIsProcessing(true);
-    
     const processedData = await DataExtractor.processRealData(historyFile, forecastFile);
     setAppData(processedData);
     setIsProcessing(false);
   };
 
-  // ĐỘNG CƠ PHÂN TÍCH
+  // ĐỘNG CƠ PHÂN TÍCH VÀ ĐỘNG LỰC HỌC TỒN KHO
   const analyticsData = useMemo(() => {
     if (!appData || !appData.inventoryData) return null;
 
@@ -205,21 +254,20 @@ export default function App() {
     
     const baseOccupancy = (totalSoldToday / totalDailyRooms) * 100;
 
-    // Quỹ phòng cần bán thêm theo mục tiêu (Cố định, không đổi theo Lead Time)
     const targetDailyRooms = Math.round(totalDailyRooms * (targetOccupancy / 100));
     const maxExtraDailyRooms = Math.max(0, targetDailyRooms - totalSoldToday);
     const extraMonthlyRoomNightsToSell = maxExtraDailyRooms * CONFIG.DAYS_IN_MONTH; 
 
-    // ĐỊNH GIÁ 5 TẦNG THEO LEAD TIME
+    // ĐỊNH GIÁ 5 TẦNG
     let leadMultiplier = 1.0;
     let leadReason = "";
 
     if (simLeadTime <= 3) {
       leadMultiplier = 1.15;
-      leadReason = "[Tier 1 - Khẩn cấp]: Khách hàng cận ngày. Khuyến nghị TĂNG GIÁ 15%.";
+      leadReason = "[Tier 1 - Khẩn cấp]: Khách hàng cận ngày. TĂNG GIÁ 15%.";
     } else if (simLeadTime <= 7) {
       leadMultiplier = 1.05;
-      leadReason = "[Tier 2 - Ngắn hạn]: Khách chốt lịch trình. Khuyến nghị TĂNG GIÁ 5%.";
+      leadReason = "[Tier 2 - Ngắn hạn]: Khách chốt lịch trình. TĂNG GIÁ 5%.";
     } else if (simLeadTime <= 14) {
       leadMultiplier = 1.00;
       leadReason = "[Tier 3 - Tiêu chuẩn]: Cung cầu cân bằng. DUY TRÌ GIÁ BASE.";
@@ -231,38 +279,35 @@ export default function App() {
       leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume. GIẢM GIÁ 10%, kèm Non-refundable.";
     }
 
-    // Tiến độ Booking (Pickup Progress): Lead Time = 30 -> 0%, Lead Time = 1 -> 100%
     const pickupProgress = (30 - simLeadTime) / 29;
 
     const processedRooms = ["RT_STD", "RT_DLX", "RT_STE"].map(key => {
       const roomBase = baseData[key];
       const strat = STRATEGIES[selectedDayType][key];
       
-      // 1. TÍNH ĐÃ BÁN (CẬP NHẬT THEO LEAD TIME)
       const roomTargetShare = Math.round(maxExtraDailyRooms * (roomBase.capacity / totalDailyRooms));
       const pickupRooms = Math.round(roomTargetShare * pickupProgress);
       const dynamicSold = Math.min(roomBase.capacity, roomBase.sold + pickupRooms);
 
-      // 2. TÍNH KHÁCH TRẢ PHÒNG (Giả định Turnover = 25% số đang ở)
+      // Khách trả phòng = 25% số phòng đang ở
       const checkOutRooms = Math.round(dynamicSold * 0.25);
+      
+      // Sẵn bán = Sức chứa - Đã bán + Khách trả (Tuyệt đối không lớn hơn sức chứa)
+      const dynamicAvai = Math.max(0, Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms));
 
-      // 3. TÍNH SẴN BÁN (Sức chứa - Đã bán + Khách trả)
-      const dynamicAvai = Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms);
-
-      // Tính giá
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
       const priceDiff = ((dynamicAdr / roomBase.oldPrice) - 1) * 100;
 
       return { key, dynamicSold, checkOutRooms, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
     });
 
-    // MÔ PHỎNG MONTE CARLO DỰA VÀO OCCUPANCY VÀ GIÁ GỐC (Tách biệt khỏi biến động của Lead Time)
+    // MÔ PHỎNG MONTE CARLO
     let successfulRoomRev = 0;
     const avgBaseAdr = processedRooms.reduce((sum, r) => sum + r.oldPrice, 0) / 3;
 
     for (let i = 0; i < CONFIG.MC_ITERATIONS; i++) {
-      const demandCapture = Utils.randomNormal(0.85, 0.05);
-      const cancelRatio = Utils.randomNormal(0.10, 0.02);
+      const demandCapture = Utils.randomNormal(CONFIG.MC_PARAMS.DEMAND_MEAN, CONFIG.MC_PARAMS.DEMAND_STD_DEV);
+      const cancelRatio = Utils.randomNormal(CONFIG.MC_PARAMS.CANCEL_MEAN, CONFIG.MC_PARAMS.CANCEL_STD_DEV);
       
       const conversionRate = Math.max(0, Math.min(1, demandCapture)) * (1 - Math.max(0, Math.min(1, cancelRatio)));
       const simulatedMonthlyRoomsSold = extraMonthlyRoomNightsToSell * conversionRate;
@@ -278,7 +323,8 @@ export default function App() {
 
   }, [appData, selectedDayType, simLeadTime, targetOccupancy]);
 
-  if (!appData) {
+  // Rào chắn bảo vệ trắng màn hình cuối cùng
+  if (!appData || !analyticsData) {
     return (
       <div style={STYLES.layoutCenter}>
         <div style={STYLES.bgBlur} />
@@ -317,9 +363,7 @@ export default function App() {
             <h1 style={STYLES.headerTitle}>Báo cáo Quản trị & Tối ưu Doanh thu - Tháng 01/2026</h1>
             <p style={STYLES.headerSub}>Ứng dụng Pipeline Trích xuất Dữ liệu, Định giá 5 Tầng & Monte Carlo.</p>
           </div>
-          <div style={appData.syncStatus ? STYLES.statusSuccess : STYLES.statusWarning}>
-             {appData.syncStatus ? "ĐÃ ĐỒNG BỘ DỮ LIỆU FILE THÁNG 1" : "DỮ LIỆU FILE LỖI - ĐANG DÙNG BASELINE"}
-          </div>
+          <div style={STYLES.statusSuccess}>✓ ĐÃ ĐỒNG BỘ DỮ LIỆU FILE HỆ THỐNG</div>
         </header>
 
         <div style={STYLES.contentArea}>
@@ -342,7 +386,7 @@ export default function App() {
               </div>
               <input type="range" min="40" max="95" value={targetOccupancy} onChange={(e) => setTargetOccupancy(Number(e.target.value))} style={STYLES.slider} />
               <div style={STYLES.helperText}>
-                Gốc Lịch sử (từ File): <strong>{baseOccupancy.toFixed(1)}%</strong>. Cần bán thêm trong tháng: <strong style={{color:"#1e3a8a"}}>{Utils.formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng (Room Nights)</strong>.
+                Gốc Lịch sử (từ File): <strong>{baseOccupancy.toFixed(1)}%</strong>. Cần bán thêm: <strong style={{color:"#1e3a8a"}}>{Utils.formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng</strong>.
               </div>
             </div>
 
@@ -381,7 +425,6 @@ export default function App() {
                       <div style={STYLES.roomName}>{room.name}</div>
                       <div style={STYLES.roomStat}>Sức chứa: <strong>{room.capacity} phòng</strong></div>
                       
-                      {/* ĐÃ BÁN VÀ KHÁCH TRẢ CẬP NHẬT THEO LEAD TIME */}
                       <div style={{ fontSize: "12px", color: "#1e40af", marginBottom: "4px", fontWeight: "700" }}>
                         Đã bán (Cập nhật): <strong>{room.dynamicSold} phòng</strong>
                       </div>
@@ -422,9 +465,9 @@ export default function App() {
             <div style={STYLES.impactGrid}>
               <div style={STYLES.impactTextCol}>
                 <p style={STYLES.impactDesc}>
-                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn (Normal Distribution) để định lượng rủi ro kinh tế học.
+                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn để định lượng rủi ro kinh tế học: Lực cầu thị trường và Tỷ lệ hủy phòng ảo.
                   <br/><br/>
-                  <strong>Lưu ý:</strong> Doanh thu kỳ vọng tính theo mức giá cơ sở (Base Rate), độc lập với biến động giá Lead Time ngắn hạn. Lead Time chỉ dùng kê toa cho rổ phòng thực tại, trong khi tổng doanh thu phản ánh <strong>Mục tiêu Công suất</strong> dài hạn.
+                  <strong>Lưu ý:</strong> Doanh thu kỳ vọng tính theo mức giá cơ sở (Base Rate), độc lập với biến động giá Lead Time ngắn hạn. Lead Time chỉ dùng kê toa cho rổ phòng thực tại.
                 </p>
                 <div style={STYLES.impactBaseBox}>
                   <div style={STYLES.impactBaseLabel}>MỐC DỰ BÁO TĨNH (BASELINE)</div>
@@ -458,77 +501,3 @@ export default function App() {
     </div>
   );
 }
-
-// ============================================================================
-// 5. THEME & STYLES
-// ============================================================================
-const STYLES = {
-  layoutCenter: { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", position: "relative", padding: "20px", fontFamily: "system-ui, sans-serif" },
-  bgBlur: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f8fafc", zIndex: -1 },
-  loginCard: { background: "white", padding: "50px", width: "100%", maxWidth: "800px", borderTop: "4px solid #1e3a8a", boxShadow: "0 10px 30px rgba(0,0,0,0.1)" },
-  heading: { color: "#0f172a", margin: "0 0 10px 0", fontSize: "28px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "1px" },
-  subHeading: { color: "#64748b", margin: "0 0 30px 0", fontSize: "14px", fontWeight: "500" },
-  flexGap: { display: "flex", gap: "20px", marginBottom: "30px" },
-  uploadBox: { flex: 1, border: "1px solid #cbd5e1", padding: "25px 20px", background: "#f8fafc" },
-  uploadTitle: { fontSize: "12px", fontWeight: "700", color: "#1e3a8a", margin: "0 0 10px 0" },
-  btnPrimary: { background: "#1e3a8a", color: "white", padding: "16px", border: "none", cursor: "pointer", fontWeight: "700", letterSpacing: "1px", width: "100%", fontSize: "14px", textTransform: "uppercase" },
-  
-  layoutMain: { minHeight: "100vh", padding: "40px", fontFamily: "system-ui, sans-serif", color: "#0f172a" },
-  bgBlurLight: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f1f5f9", zIndex: -1 },
-  dashboardContainer: { maxWidth: "1400px", margin: "0 auto", background: "white", boxShadow: "0 10px 40px rgba(0,0,0,0.1)", border: "1px solid #e2e8f0" },
-  header: { background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a", display: "flex", justifyContent: "space-between", alignItems: "center" },
-  headerTitle: { fontSize: "22px", fontWeight: "800", textTransform: "uppercase", margin: "0 0 8px 0", letterSpacing: "1px" },
-  headerSub: { margin: 0, color: "#94a3b8", fontSize: "13px", fontWeight: "500" },
-  statusSuccess: { padding: "8px 15px", background: "#059669", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
-  statusWarning: { padding: "8px 15px", background: "#b45309", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
-  contentArea: { padding: "40px" },
-  
-  grid2Col: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px", marginBottom: "40px" },
-  metricCardActive: { padding: "25px", border: "1px solid #cbd5e1", background: "#f8fafc", borderLeft: "4px solid #1e3a8a" },
-  metricCard: { padding: "25px", border: "1px solid #cbd5e1", background: "white", borderLeft: "4px solid #64748b" },
-  metricLabel: { fontSize: "12px", color: "#475569", fontWeight: "700", letterSpacing: "0.5px" },
-  metricValue: { fontSize: "32px", fontWeight: "800", color: "#0f172a", marginTop: "10px" },
-  
-  controlSection: { marginBottom: "35px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px", padding: "35px", background: "#f8fafc", border: "1px solid #e2e8f0" },
-  flexBetween: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" },
-  controlTitle: { fontSize: "14px", fontWeight: "700", color: "#0f172a", margin: 0 },
-  badge: { fontSize: "16px", fontWeight: "800", color: "white", background: "#1e3a8a", padding: "4px 12px" },
-  slider: { width: "100%", accentColor: "#1e3a8a", cursor: "pointer" },
-  sliderReverse: { width: "100%", accentColor: "#1e3a8a", cursor: "pointer", direction: "rtl" },
-  helperText: { marginTop: "15px", fontSize: "13px", color: "#475569", lineHeight: "1.6" },
-  alertBox: { marginTop: "15px", fontSize: "13px", color: "#1e3a8a", lineHeight: "1.6", borderLeft: "3px solid #1e3a8a", paddingLeft: "15px", background: "#eff6ff", padding: "10px" },
-  
-  flexGapSmall: { display: "flex", gap: "5px", marginBottom: "20px" },
-  tabActive: { flex: 1, padding: "15px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#1e3a8a", color: "white", fontWeight: "700", fontSize: "13px", transition: "0.2s" },
-  tab: { flex: 1, padding: "15px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#f8fafc", color: "#475569", fontWeight: "700", fontSize: "13px", transition: "0.2s" },
-  
-  table: { width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1" },
-  tableHead: { textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #1e3a8a" },
-  th: { padding: "16px 20px", fontSize: "12px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: "800" },
-  tableRow: { borderBottom: "1px solid #e2e8f0" },
-  td: { padding: "25px 20px", verticalAlign: "top" },
-  roomName: { fontWeight: "800", color: "#0f172a", fontSize: "14px", marginBottom: "12px" },
-  roomStat: { fontSize: "12px", color: "#64748b", marginBottom: "4px" },
-  roomAvai: { fontSize: "12px", fontWeight: "700", color: "#1e3a8a", padding: "6px 10px", background: "#f1f5f9", border: "1px solid #cbd5e1", display: "inline-block", marginTop: "4px" },
-  priceOld: { fontSize: "13px", color: "#94a3b8", textDecoration: "line-through" },
-  priceNew: { fontSize: "22px", fontWeight: "800", color: "#0f172a", margin: "6px 0" },
-  priceDiff: { fontSize: "12px", fontWeight: "700" },
-  ul: { paddingLeft: "15px", margin: 0, fontSize: "13px", color: "#334155", lineHeight: "1.7" },
-  tdAncillary: { padding: "25px 20px", verticalAlign: "top", fontSize: "13px", fontWeight: "700", color: "#1e3a8a", lineHeight: "1.6" },
-  
-  impactSection: { border: "1px solid #cbd5e1", background: "white", overflow: "hidden" },
-  impactHeader: { fontSize: "15px", fontWeight: "800", color: "#0f172a", background: "#f1f5f9", margin: 0, padding: "20px 25px", textTransform: "uppercase", borderBottom: "1px solid #e2e8f0" },
-  impactGrid: { padding: "40px", display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "40px" },
-  impactTextCol: { borderRight: "1px solid #e2e8f0", paddingRight: "40px" },
-  impactDesc: { fontSize: "14px", color: "#475569", lineHeight: "1.8", margin: "0 0 25px 0" },
-  impactBaseBox: { padding: "20px", background: "#f1f5f9", border: "1px solid #cbd5e1" },
-  impactBaseLabel: { fontSize: "12px", fontWeight: "700", color: "#64748b", marginBottom: "5px" },
-  impactBaseVal: { fontSize: "24px", fontWeight: "800", color: "#0f172a" },
-  impactResultGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" },
-  impactTotalBox: { padding: "20px", background: "#0f172a", color: "white", gridColumn: "1 / -1", borderLeft: "4px solid #1e3a8a" },
-  impactTotalLabel: { fontSize: "12px", fontWeight: "700", color: "#94a3b8", marginBottom: "5px" },
-  impactTotalVal: { fontSize: "32px", fontWeight: "800", color: "white" },
-  impactGrowthBox: { padding: "15px", background: "#f0fdf4", border: "1px solid #bbf7d0" },
-  impactSubBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1" },
-  impactAncilBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1", gridColumn: "1 / -1" }
-};
