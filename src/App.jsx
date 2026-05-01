@@ -170,8 +170,10 @@ export default function App() {
       return { key, currentOccupied, checkOutRooms, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
     });
 
-    // 3. MÔ PHỎNG MONTE CARLO DOANH THU
+    // 3. MÔ PHỎNG MONTE CARLO DOANH THU (CHỈ PHỤ THUỘC VÀO OCCUPANCY VÀ GIÁ GỐC LỊCH SỬ)
+    // Tách biệt hoàn toàn khỏi Lead Time: Khách sạn không thể bán 100% quỹ phòng còn lại bằng giá sát ngày.
     let successfulRoomRev = 0;
+    const avgBaseAdr = processedRooms.reduce((sum, r) => sum + r.oldPrice, 0) / 3;
     
     for (let i = 0; i < 2000; i++) {
       const simulatedDemandCapture = 0.75 + Math.random() * 0.20;
@@ -179,8 +181,8 @@ export default function App() {
       const conversionRate = simulatedDemandCapture * (1 - simulatedCancelRatio);
 
       const simulatedMonthlyRoomNightsSold = extraMonthlyRoomNightsToSell * conversionRate;
-      const avgDynamicAdr = processedRooms.reduce((sum, r) => sum + r.dynamicAdr, 0) / 3;
-      successfulRoomRev += (simulatedMonthlyRoomNightsSold * avgDynamicAdr);
+      // Doanh thu kỳ vọng = Đêm phòng bán được * Giá gốc trung bình (Không bị nhiễu bởi Giá Lead Time)
+      successfulRoomRev += (simulatedMonthlyRoomNightsSold * avgBaseAdr);
     }
 
     const meanRoomRev = successfulRoomRev / 2000;
@@ -230,7 +232,7 @@ export default function App() {
         {/* HEADER */}
         <header style={{ background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a" }}>
           <h1 style={{ fontSize: "22px", fontWeight: "800", textTransform: "uppercase", margin: "0 0 8px 0", letterSpacing: "1px" }}>Báo cáo Quản trị & Tối ưu Doanh thu - Tháng 01/2026</h1>
-          <p style={{ margin: 0, color: "#94a3b8", fontSize: "13px", fontWeight: "500" }}>Áp dụng Mô hình Định giá 5 Tầng (5-Tier Dynamic Pricing) & Quản lý Tồn kho Động.</p>
+          <p style={{ margin: 0, color: "#94a3b8", fontSize: "13px", fontWeight: "500" }}>Áp dụng Định giá 5 Tầng (5-Tier Pricing), Tồn kho Động & Xác suất Monte Carlo.</p>
         </header>
 
         <div style={{ padding: "40px" }}>
@@ -256,7 +258,7 @@ export default function App() {
               </div>
               <input type="range" min="40" max="95" value={targetOccupancy} onChange={(e) => setTargetOccupancy(Number(e.target.value))} style={{ width: "100%", accentColor: "#1e3a8a", cursor: "pointer" }} />
               <div style={{ marginTop: "15px", fontSize: "13px", color: "#475569", lineHeight: "1.6" }}>
-                Công suất gốc Lịch sử: <strong>{baseOccupancy.toFixed(1)}%</strong>. Quỹ phòng cần bán thêm trong tháng để đạt chỉ tiêu là: <strong style={{color:"#1e3a8a"}}>{formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng (Room Nights)</strong>.
+                Công suất gốc Lịch sử: <strong>{baseOccupancy.toFixed(1)}%</strong>. Quỹ phòng yêu cầu bán thêm để đạt chỉ tiêu: <strong style={{color:"#1e3a8a"}}>{formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng (Room Nights)</strong>.
               </div>
             </div>
 
@@ -340,7 +342,7 @@ export default function App() {
                 <p style={{ fontSize: "14px", color: "#475569", lineHeight: "1.8", margin: "0 0 25px 0" }}>
                   Hệ thống thực thi <strong>2000 phiên bản giả lập ngẫu nhiên</strong> nhằm định lượng rủi ro kinh tế học: Lực cầu thị trường biến thiên (75% - 95%) và Tỷ lệ hủy phòng ảo trên kênh OTA (siết chặt từ 17.8% xuống mức 8%-13%).
                   <br/><br/>
-                  Thông qua cơ chế <strong>Định giá 5 Tầng (Multi-tier Pricing)</strong> theo Lead Time nhằm thu hồi thặng dư tiêu dùng và thiết lập <strong>Mục tiêu Công suất {targetOccupancy}%</strong>, Khối Kinh doanh hoàn toàn có cơ sở phá vỡ giới hạn dự báo tĩnh, thúc đẩy tăng trưởng thực chất.
+                  <strong>Lưu ý:</strong> Doanh thu kỳ vọng được tính toán dựa trên mức giá gốc lịch sử, tách biệt hoàn toàn khỏi biến động tăng/giảm giá cục bộ của Lead Time. Nhờ đó, việc điều chỉnh Lead Time chỉ giúp kê toa chiến lược giá cho hiện tại, trong khi tổng doanh thu kỳ vọng sẽ <strong>tăng trưởng ổn định dựa trên Mục tiêu Công suất.</strong>
                 </p>
                 <div style={{ padding: "20px", background: "#f1f5f9", border: "1px solid #cbd5e1" }}>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: "#64748b", marginBottom: "5px" }}>MỐC DỰ BÁO TĨNH (BASELINE)</div>
