@@ -314,7 +314,7 @@ export default function App() {
             <div style={{ flex: 1, padding: "20px", background: "#fef0f0", borderRadius: "12px", border: "1px solid #fadcd9" }}>
               <div style={{ fontSize: "13px", color: "#e76f51", textTransform: "uppercase", fontWeight: "bold" }}>Hiệu suất Khai thác phòng</div>
               <div style={{ fontSize: "32px", fontWeight: "900", color: "#e76f51", margin: "8px 0" }}>+ Cải thiện</div>
-              <div style={{ fontSize: "12px", color: "#666" }}>Ngăn chặn Revenue Leakage ở Lead Time >15 ngày</div>
+              <div style={{ fontSize: "12px", color: "#666" }}>Ngăn chặn Revenue Leakage ở Lead Time &gt;15 ngày</div>
             </div>
           </div>
         </div>
