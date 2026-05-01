@@ -1,11 +1,18 @@
 import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 
-// FORMAT TIỀN TỆ & SỐ LIỆU
-const currency = (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v || 0);
-const formatNum = (v) => new Intl.NumberFormat("en-US").format(Math.round(v));
+// 1. FORMAT TIỀN TỆ & SỐ LIỆU (ĐÃ SỬA LỖI TÊN HÀM TẠI ĐÂY)
+function currency(v) {
+  const num = Number(v);
+  if (isNaN(num)) return "$0";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(num);
+}
 
-// HÀM ĐỌC EXCEL (TÍCH HỢP CƠ CHẾ FAILSAFE CHỐNG CRASH)
+function formatNumber(v) {
+  return new Intl.NumberFormat("en-US").format(Math.round(v));
+}
+
+// 2. HÀM ĐỌC EXCEL (TÍCH HỢP CƠ CHẾ FAILSAFE CHỐNG CRASH)
 const readExcel = (file) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -53,19 +60,16 @@ export default function App() {
   const STRATEGIES = {
     Weekday: {
       RT_STD: {
-        targetRatio: 0.6,
         who: ["Ưu tiên 1 - Corporate (B2B): Tạo nền tảng công suất ngày thường ổn định, giảm tỷ trọng rủi ro từ khách Leisure.", "Ưu tiên 2 - Group: Khai thác đoàn khách lưu trú dài ngày (>6 đêm) để tối ưu hóa chi tiêu F&B."],
         where: ["Direct - B2B Contract: Miễn phí hoa hồng OTA, không bào mòn giá trị ròng (Net ADR).", "OTA (Booking/Agoda): Chỉ dùng để giải phóng tồn kho phút chót (Last-minute booking)."],
         ancillary: "MICE Bundle (Dịch vụ F&B + Laundry)"
       },
       RT_DLX: {
-        targetRatio: 0.5,
         who: ["Ưu tiên 1 - Leisure: Tệp khách mang lại ADR cao nhất, là nguồn thu chủ lực giữa tuần.", "Ưu tiên 2 - MICE: Tận dụng các đoàn sự kiện doanh nghiệp quy mô nhỏ, có ngân sách tốt."],
         where: ["Direct Website: Chuyển dịch khách từ OTA về Web để kiểm soát rủi ro hủy phòng ảo (OTA hiện hủy tới 17.8%)."],
         ancillary: "Spa & Tour Bundle (Phá vỡ thế độc tôn của F&B)"
       },
       RT_STE: {
-        targetRatio: 0.7,
         who: ["Ưu tiên 1 - MICE VIPs: Chuyên gia, quản lý cấp cao tham gia sự kiện giữa tuần."],
         where: ["Direct Phone / GDS: Tuyệt đối không bán Suite qua OTA để giữ hình ảnh thương hiệu và chặn Leakage."],
         ancillary: "Luxury Service Bundle (All-inclusive)"
@@ -73,19 +77,16 @@ export default function App() {
     },
     Weekend: {
       RT_STD: {
-        targetRatio: 0.8,
         who: ["Ưu tiên 1 - Leisure: Cầu du lịch tự túc cuối tuần cao, duy trì giá trị phòng tốt."],
         where: ["OTA (Booking/Agoda): Kéo Volume mạnh nhưng bắt buộc áp dụng Non-refundable nếu đặt sớm.", "Direct Website: Khuyến mãi thành viên ẩn để kéo khách khỏi OTA."],
         ancillary: "Buffet Bundle (Dịch vụ Ẩm thực cuối tuần)"
       },
       RT_DLX: {
-        targetRatio: 0.6,
         who: ["Ưu tiên 1 - Leisure Couples: Sẵn sàng chi trả cao cho tiện ích nghỉ dưỡng cuối tuần."],
         where: ["Direct Website: Chạy quảng cáo gói Combo Weekend Retreat để lấy Data khách hàng trực tiếp."],
         ancillary: "Spa Retreat Package (Trải nghiệm làm đẹp)"
       },
       RT_STE: {
-        targetRatio: 0.9,
         who: ["Ưu tiên 1 - Leisure VIP: Dữ liệu lấp đầy Suite cuối tuần đạt đỉnh. Nguồn cung cực kỳ khan hiếm."],
         where: ["Direct Phone & Loyalty: Bảo vệ dòng tiền. Áp dụng Non-refundable 100% để triệt tiêu case No-show."],
         ancillary: "Premium Heritage Bundle (Đóng gói toàn bộ tiện ích)"
@@ -100,7 +101,7 @@ export default function App() {
     try {
       const [histWb, forecastWb] = await Promise.all([readExcel(historyFile), readExcel(forecastFile)]);
 
-      // Dữ liệu Baseline dự phòng
+      // Dữ liệu Baseline dự phòng nếu file tải lên bị hỏng cấu trúc
       let forecastTotal = 125494;
       let onHandTotal = 110744;
 
@@ -313,14 +314,14 @@ export default function App() {
                     <td style={tdStyle}>
                       <ul style={{ paddingLeft: "15px", margin: 0, fontSize: "13px", color: "#334155", lineHeight: "1.7" }}>
                         {room.who.map((w, idx) => (
-                          <li key={idx} style={{ marginBottom: "8px" }}>{w}</li>
+                          <li key={idx} style={{ marginBottom: "8px" }} dangerouslySetInnerHTML={{ __html: w.replace(/(Ưu tiên \d)/g, '<strong>$1</strong>') }} />
                         ))}
                       </ul>
                     </td>
                     <td style={tdStyle}>
                       <ul style={{ paddingLeft: "15px", margin: 0, fontSize: "13px", color: "#334155", lineHeight: "1.7" }}>
                         {room.where.map((w, idx) => (
-                          <li key={idx} style={{ marginBottom: "8px" }}>{w}</li>
+                          <li key={idx} style={{ marginBottom: "8px" }} dangerouslySetInnerHTML={{ __html: w.replace(/(Kênh \d)/g, '<strong>$1</strong>') }} />
                         ))}
                       </ul>
                     </td>
