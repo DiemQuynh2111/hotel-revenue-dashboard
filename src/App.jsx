@@ -2,13 +2,13 @@ import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 
 // ============================================================================
-// 1. CẤU HÌNH & STYLES (Đưa lên đầu để tuyệt đối không dính lỗi ReferenceError)
+// 1. CẤU HÌNH & STYLES (Đưa lên đầu để tránh lỗi)
 // ============================================================================
 const CONFIG = {
   MC_ITERATIONS: 2000,
   DAYS_IN_MONTH: 31,
   TOTAL_ROOMS: 80,
-  HISTORICAL_AVG_OCCUPANCY: 44.2, // Base lịch sử các tháng trước
+  HISTORICAL_AVG_OCCUPANCY: 44.2, // Base lịch sử theo phân tích Storyboard
   ANCILLARY_RATIO: 0.18,
   MC_PARAMS: { DEMAND_MEAN: 0.85, DEMAND_STD_DEV: 0.05, CANCEL_MEAN: 0.10, CANCEL_STD_DEV: 0.02 },
   DEFAULT_METRICS: { forecast: 125494, onHand: 110744 }
@@ -19,7 +19,7 @@ const STYLES = {
   bgBlur: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f8fafc", zIndex: -1 },
   loginCard: { background: "white", padding: "50px", width: "100%", maxWidth: "800px", borderTop: "4px solid #1e3a8a", boxShadow: "0 20px 40px rgba(0,0,0,0.1)", borderRadius: "8px" },
   heading: { color: "#0f172a", margin: "0 0 10px 0", fontSize: "26px", fontWeight: "900", textTransform: "uppercase", letterSpacing: "1px" },
-  subHeading: { color: "#64748b", margin: "0 0 30px 0", fontSize: "14px", fontWeight: "500" },
+  subHeading: { color: "#64748b", margin: "0 0 30px 0", fontSize: "14px", fontWeight: "500", lineHeight: "1.6" },
   flexGap: { display: "flex", gap: "20px", marginBottom: "30px" },
   uploadBox: { flex: 1, border: "1px solid #cbd5e1", padding: "25px 20px", background: "#f1f5f9", borderRadius: "6px" },
   uploadTitle: { fontSize: "12px", fontWeight: "800", color: "#1e3a8a", margin: "0 0 12px 0" },
@@ -27,12 +27,11 @@ const STYLES = {
   
   layoutMain: { minHeight: "100vh", padding: "30px 20px", fontFamily: "system-ui, -apple-system, sans-serif", color: "#0f172a" },
   bgBlurLight: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f1f5f9", zIndex: -1 },
-  dashboardContainer: { maxWidth: "1450px", margin: "0 auto", background: "white", boxShadow: "0 10px 40px rgba(0,0,0,0.08)", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" },
+  dashboardContainer: { maxWidth: "1500px", margin: "0 auto", background: "white", boxShadow: "0 10px 40px rgba(0,0,0,0.08)", border: "1px solid #e2e8f0", borderRadius: "10px", overflow: "hidden" },
   header: { background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a", display: "flex", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { fontSize: "22px", fontWeight: "900", textTransform: "uppercase", margin: "0 0 8px 0", letterSpacing: "1px" },
   headerSub: { margin: 0, color: "#94a3b8", fontSize: "13px", fontWeight: "500" },
-  statusSuccess: { padding: "8px 16px", background: "#059669", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "6px" },
-  statusWarning: { padding: "8px 16px", background: "#b45309", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "6px" },
+  statusSuccess: { padding: "8px 16px", background: "#059669", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "6px", border: "1px solid #047857" },
   contentArea: { padding: "40px" },
   
   grid2Col: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px", marginBottom: "35px" },
@@ -55,7 +54,7 @@ const STYLES = {
   tabActive: { flex: 1, padding: "16px", border: "none", cursor: "pointer", background: "#1e3a8a", color: "white", fontWeight: "800", fontSize: "14px", borderRadius: "6px" },
   tab: { flex: 1, padding: "16px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#f8fafc", color: "#475569", fontWeight: "700", fontSize: "14px", borderRadius: "6px" },
   
-  table: { width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1", background: "white", borderRadius: "8px", overflow: "hidden" },
+  table: { width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1", background: "white", borderRadius: "8px", overflow: "hidden", tableLayout: "fixed" },
   tableHead: { textAlign: "left", background: "#f1f5f9", borderBottom: "3px solid #1e3a8a" },
   th: { padding: "18px 20px", fontSize: "12px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: "900" },
   tableRow: { borderBottom: "1px solid #e2e8f0" },
@@ -68,18 +67,19 @@ const STYLES = {
   priceNew: { fontSize: "24px", fontWeight: "900", color: "#0f172a", margin: "6px 0" },
   priceDiff: { fontSize: "13px", fontWeight: "800" },
   
-  stratLevel: { display: "inline-block", padding: "3px 8px", background: "#e2e8f0", color: "#334155", fontSize: "11px", fontWeight: "800", borderRadius: "4px", marginBottom: "4px", marginRight: "6px" },
-  stratTitle: { fontSize: "13px", fontWeight: "800", color: "#0f172a", marginBottom: "4px" },
-  stratDesc: { fontSize: "13px", color: "#475569", lineHeight: "1.5", margin: "0 0 12px 0" },
+  stratSection: { marginBottom: "16px", paddingBottom: "12px", borderBottom: "1px dashed #e2e8f0" },
+  stratLevel: { display: "inline-block", padding: "4px 8px", background: "#f1f5f9", color: "#334155", fontSize: "11px", fontWeight: "800", borderRadius: "4px", marginBottom: "6px", textTransform: "uppercase" },
+  stratTitle: { fontSize: "13px", fontWeight: "800", color: "#0f172a", marginBottom: "6px" },
+  stratDesc: { fontSize: "13px", color: "#475569", lineHeight: "1.6", margin: 0, textAlign: "justify" },
   
-  ancilTitle: { fontSize: "13px", fontWeight: "900", color: "#1d4ed8", marginBottom: "6px" },
-  ancilDesc: { fontSize: "12.5px", color: "#475569", lineHeight: "1.6", fontStyle: "italic" },
+  ancilTitle: { fontSize: "13px", fontWeight: "900", color: "#1d4ed8", marginBottom: "6px", textTransform: "uppercase" },
+  ancilDesc: { fontSize: "13px", color: "#475569", lineHeight: "1.6", fontStyle: "italic", textAlign: "justify" },
   
   impactSection: { border: "1px solid #cbd5e1", background: "white", borderRadius: "8px", overflow: "hidden" },
   impactHeader: { fontSize: "16px", fontWeight: "900", color: "#0f172a", background: "#f1f5f9", margin: 0, padding: "20px 30px", textTransform: "uppercase", borderBottom: "1px solid #e2e8f0" },
   impactGrid: { padding: "40px", display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "40px" },
   impactTextCol: { borderRight: "1px solid #e2e8f0", paddingRight: "40px" },
-  impactDesc: { fontSize: "14px", color: "#475569", lineHeight: "1.8", margin: "0 0 25px 0" },
+  impactDesc: { fontSize: "14px", color: "#475569", lineHeight: "1.8", margin: "0 0 25px 0", textAlign: "justify" },
   impactBaseBox: { padding: "25px", background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: "6px" },
   impactBaseLabel: { fontSize: "12px", fontWeight: "800", color: "#64748b", marginBottom: "8px" },
   impactBaseVal: { fontSize: "28px", fontWeight: "900", color: "#0f172a" },
@@ -107,34 +107,34 @@ const Utils = {
 };
 
 // ============================================================================
-// 3. CHIẾN LƯỢC KINH DOANH (CẤU TRÚC MỚI: CHI TIẾT & CHUYÊN SÂU)
+// 3. CHIẾN LƯỢC KINH DOANH (TÁI CẤU TRÚC THEO PHÂN TÍCH STORYBOARD)
 // ============================================================================
 const STRATEGIES = {
   Weekday: {
     RT_STD: { 
       who: [
-        { level: "Ưu tiên 1", title: "Corporate (B2B)", desc: "Khách công tác cung cấp Base công suất cực kỳ ổn định, triệt tiêu rủi ro trống phòng giữa tuần." },
-        { level: "Ưu tiên 2", title: "Group / Đoàn", desc: "Tận dụng lợi thế lưu trú dài ngày (>6 đêm), tối ưu hóa chi phí vận hành cố định." }
+        { level: "Ưu tiên 1", title: "Khách Corporate (B2B)", desc: "Giảm rủi ro tập trung quá mức vào Leisure. Khách công tác tạo nền tảng công suất ổn định giữa tuần." },
+        { level: "Ưu tiên 2", title: "Khách Đoàn (Group)", desc: "Tận dụng lợi thế lưu trú dài ngày (>6 đêm) để tối ưu hóa biên lợi nhuận cố định." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Direct B2B Contract", desc: "Không tốn 15-20% hoa hồng OTA, bảo vệ tuyệt đối Net ADR." },
-        { level: "Bổ trợ", title: "Kênh OTA", desc: "Chỉ mở bán để giải phóng tồn kho phút chót (Last-minute)." }
+        { level: "Kênh Chính", title: "Direct B2B Contract", desc: "Không tốn 17.8% hoa hồng OTA, bảo vệ tuyệt đối Net ADR." },
+        { level: "Bổ trợ", title: "Kênh OTA", desc: "Chỉ mở bán để giải phóng tồn kho phút chót (Last-minute booking)." }
       ], 
-      ancillary: { title: "MICE Bundle (F&B + Laundry)", desc: "Giới công tác có nhu cầu ăn uống tại khách sạn và giặt ủi hàng ngày. Đóng gói dịch vụ giúp tăng vọt doanh thu trên mỗi khách (RevPAC)." }
+      ancillary: { title: "MICE Bundle (F&B + Laundry)", desc: "Đóng gói dịch vụ giặt ủi và ẩm thực. Tăng chi tiêu trên mỗi khách (RevPAC) mà không phụ thuộc vào tiền phòng." }
     },
     RT_DLX: { 
       who: [
-        { level: "Ưu tiên 1", title: "Leisure (Nghỉ dưỡng)", desc: "Nhóm khách có độ nhạy cảm giá thấp, mang lại ADR cao nhất trong các ngày thường." },
-        { level: "Ưu tiên 2", title: "Bleisure", desc: "Khách công tác kết hợp nghỉ dưỡng, sẵn sàng chi thêm tiền để nâng cấp hạng phòng." }
+        { level: "Ưu tiên 1", title: "Leisure (Nghỉ dưỡng)", desc: "Nguồn thu chủ lực mang lại mức ADR cao nhất trong các ngày thường." },
+        { level: "Ưu tiên 2", title: "Bleisure (Công tác + Nghỉ dưỡng)", desc: "Khách B2B có khả năng chi trả thêm để nâng cấp hạng phòng." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Direct Website", desc: "Chặn rủi ro hủy ảo từ OTA (Tỷ lệ hủy OTA đang ở mức báo động 17.8%)." }
+        { level: "Kênh Chính", title: "Direct Website", desc: "Chuyển dịch booking từ OTA về Web để triệt tiêu tỷ lệ hủy ảo (Lost Revenue) đang ở mức cao." }
       ], 
-      ancillary: { title: "Spa & Wellness Bundle", desc: "Khách phân khúc này chuộng trải nghiệm. Tặng kèm voucher Spa kích thích họ dùng các dịch vụ chăm sóc sức khỏe biên lợi nhuận cao." }
+      ancillary: { title: "Spa & Wellness Cross-sell", desc: "Phá vỡ thế độc tôn của F&B (hiện chiếm >52%). Tặng voucher Spa để kích thích nhu cầu các dịch vụ biên lợi nhuận cao." }
     },
     RT_STE: { 
       who: [
-        { level: "Ưu tiên 1", title: "MICE VIPs / C-Level", desc: "Ngân sách công ty dồi dào, yêu cầu không gian lưu trú và làm việc đẳng cấp." }
+        { level: "Ưu tiên 1", title: "MICE VIPs / C-Level", desc: "Tệp khách có ngân sách công ty dồi dào, không nhạy cảm về giá phòng." }
       ], 
       where: [
         { level: "Kênh Chính", title: "Direct Phone / GDS", desc: "Bán qua Sales nội bộ để chăm sóc cá nhân hóa. Tuyệt đối không xả hàng lên OTA làm giảm giá trị thương hiệu." }
@@ -145,30 +145,30 @@ const STRATEGIES = {
   Weekend: {
     RT_STD: { 
       who: [
-        { level: "Ưu tiên 1", title: "FIT / Leisure Khách lẻ", desc: "Nhu cầu đi du lịch tự túc cuối tuần là nguồn cầu lớn nhất." }
+        { level: "Ưu tiên 1", title: "FIT / Leisure Khách lẻ", desc: "Nguồn cầu lớn nhất giúp duy trì giá trị doanh thu phòng ở mức cao vào cuối tuần." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "OTA (Booking/Agoda)", desc: "Tận dụng thuật toán hiển thị của OTA để gom Volume, nhưng BẮT BUỘC bán giá Non-refundable." }
+        { level: "Kênh Chính", title: "OTA (Booking/Agoda)", desc: "Dùng thuật toán OTA để kéo Volume, NHƯNG BẮT BUỘC bán giá Non-refundable để chặn Hủy phòng/No-show." }
       ], 
-      ancillary: { title: "Weekend Buffet Bundle", desc: "Tối ưu hóa công suất của nhà hàng cuối tuần. Tích hợp thẳng vào giá phòng để chốt sale nhanh." }
+      ancillary: { title: "Weekend Buffet Bundle", desc: "Khách Leisure có xu hướng chi tiêu F&B cuối tuần. Tích hợp buffet vào giá phòng để chốt sale nhanh." }
     },
     RT_DLX: { 
       who: [
         { level: "Ưu tiên 1", title: "Couples / Staycation", desc: "Cặp đôi hoặc khách địa phương tìm kiếm không gian lãng mạn dịp cuối tuần." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Direct Social & Web", desc: "Chạy quảng cáo nhắm mục tiêu (Targeted Ads) các gói Combo tình yêu để lấy Data." }
+        { level: "Kênh Chính", title: "Direct Social & Web", desc: "Chạy quảng cáo nhắm mục tiêu (Targeted Ads) các gói Combo tình yêu để thu thập Data khách hàng." }
       ], 
-      ancillary: { title: "Romantic Retreat Package", desc: "Bao gồm Private Dining (Bữa tối lãng mạn) và setup phòng đặc biệt. Biên lợi nhuận F&B rất cao." }
+      ancillary: { title: "Romantic Retreat Package", desc: "Tích hợp Private Dining (Bữa tối lãng mạn) và setup phòng. Phân khúc này có tỷ lệ Attach Rate dịch vụ bổ trợ rất cao." }
     },
     RT_STE: { 
       who: [
-        { level: "Ưu tiên 1", title: "High-net-worth Families", desc: "Gia đình thượng lưu cần không gian rộng rãi. Phân khúc này làm lấp đầy Suite đạt đỉnh 57.4%." }
+        { level: "Ưu tiên 1", title: "Gia đình thượng lưu", desc: "Nhóm gia đình cần không gian rộng. Phân khúc này làm lấp đầy Suite đạt đỉnh 57.4% dịp cuối tuần." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Loyalty Program", desc: "Ưu tiên bán cho khách quen để triệt tiêu lịch sử 130 ca No-show." }
+        { level: "Kênh Chính", title: "Loyalty Program", desc: "Bán chéo cho khách quen (Return guests) để bảo vệ dòng tiền và tối ưu Net Value." }
       ], 
-      ancillary: { title: "Family Heritage Experience", desc: "Bao gồm Tour văn hóa thiết kế riêng và dịch vụ trông trẻ (Babysitting)." }
+      ancillary: { title: "Family Heritage Experience", desc: "Cung cấp Tour văn hóa thiết kế riêng, bù đắp sự thiếu đa dạng trong cơ cấu Ancillary hiện tại." }
     }
   }
 };
@@ -293,7 +293,6 @@ const DataExtractor = {
   }
 };
 
-
 // ============================================================================
 // 5. MAIN APP COMPONENT
 // ============================================================================
@@ -321,10 +320,10 @@ export default function App() {
 
     const baseData = appData.inventoryData[selectedDayType];
 
-    // SỬ DỤNG SỐ 44.2% LÀM MỎ NEO LỊCH SỬ NHƯ YÊU CẦU
+    // SỬ DỤNG 44.2% LÀM BASELINE LỊCH SỬ THAY VÌ SỐ TỒN KHO NGÀY HÔM ĐÓ
     const historicalSoldRooms = Math.round(CONFIG.TOTAL_ROOMS * (CONFIG.HISTORICAL_AVG_OCCUPANCY / 100));
 
-    // Tính toán số lượng đêm phòng cần bán ĐỂ BÙ ĐẮP KHOẢNG TRỐNG TỪ 44.2% LÊN TARGET%
+    // Tính số phòng cần bán ĐỂ BÙ ĐẮP KHOẢNG TRỐNG TỪ 44.2% LÊN MỤC TIÊU
     const targetDailyRooms = Math.round(CONFIG.TOTAL_ROOMS * (targetOccupancy / 100));
     const maxExtraDailyRooms = Math.max(0, targetDailyRooms - historicalSoldRooms);
     const extraMonthlyRoomNightsToSell = maxExtraDailyRooms * CONFIG.DAYS_IN_MONTH; 
@@ -335,19 +334,19 @@ export default function App() {
 
     if (simLeadTime <= 3) {
       leadMultiplier = 1.15;
-      leadReason = "[Tier 1 - Khẩn cấp]: Khách hàng cận ngày. TĂNG GIÁ 15%.";
+      leadReason = "[Tier 1 - Khẩn cấp]: Nhu cầu vọt lên sát ngày check-in. Khuyến nghị TĂNG GIÁ 15% để tối ưu hóa Yield.";
     } else if (simLeadTime <= 7) {
       leadMultiplier = 1.05;
-      leadReason = "[Tier 2 - Ngắn hạn]: Khách chốt lịch trình. TĂNG GIÁ 5%.";
+      leadReason = "[Tier 2 - Ngắn hạn]: Khách hàng đã chốt vé máy bay. Khuyến nghị TĂNG GIÁ 5% để thu hồi thặng dư tiêu dùng.";
     } else if (simLeadTime <= 14) {
       leadMultiplier = 1.00;
-      leadReason = "[Tier 3 - Tiêu chuẩn]: Cung cầu cân bằng. DUY TRÌ GIÁ BASE.";
+      leadReason = "[Tier 3 - Tiêu chuẩn]: Trạng thái cung cầu cân bằng. DUY TRÌ GIÁ BASE để duy trì Booking Velocity.";
     } else if (simLeadTime <= 21) {
       leadMultiplier = 0.95;
-      leadReason = "[Tier 4 - Đặt sớm]: Kích cầu. GIẢM GIÁ 5%, kèm Hủy mất phí 50%.";
+      leadReason = "[Tier 4 - Đặt sớm]: Ưu đãi kích cầu. GIẢM GIÁ 5%, kèm điều khoản hoàn hủy chặt chẽ (Phạt 50%).";
     } else {
       leadMultiplier = 0.90;
-      leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume. GIẢM GIÁ 10%, kèm Non-refundable.";
+      leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume sớm. GIẢM GIÁ 10%, bắt buộc áp dụng Non-refundable 100%.";
     }
 
     const pickupProgress = (30 - simLeadTime) / 29;
@@ -359,12 +358,11 @@ export default function App() {
       const roomTargetShare = Math.round(maxExtraDailyRooms * (roomBase.capacity / CONFIG.TOTAL_ROOMS));
       const pickupRooms = Math.round(roomTargetShare * pickupProgress);
       
-      // Đã bán = Trung bình lịch sử thực tế + Lượng khách mua thêm theo Lead Time
-      const dynamicSold = Math.min(roomBase.capacity, roomBase.sold + pickupRooms);
-
-      // Khách trả phòng = 20% số phòng đang ở
-      const checkOutRooms = Math.round(dynamicSold * 0.2);
+      // Khách trả phòng = 20%
+      const checkOutRooms = Math.round(roomBase.capacity * (CONFIG.HISTORICAL_AVG_OCCUPANCY/100) * 0.2);
       
+      // Sẵn bán
+      const dynamicSold = Math.min(roomBase.capacity, Math.round(roomBase.capacity * (CONFIG.HISTORICAL_AVG_OCCUPANCY/100)) + pickupRooms);
       const dynamicAvai = Math.max(0, Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms));
 
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
@@ -401,7 +399,9 @@ export default function App() {
         <div style={STYLES.bgBlur} />
         <div style={STYLES.loginCard}>
           <h1 style={STYLES.heading}>Hệ thống Hoạch định Doanh thu (BI)</h1>
-          <p style={STYLES.subHeading}>Phân hệ Chẩn đoán & Kê toa Chiến lược - Heritage Hue Hotel</p>
+          <p style={STYLES.subHeading}>
+            Cung cấp Giải pháp Kê toa (Prescriptive Analytics) khắc phục triệt để tình trạng: Phụ thuộc OTAs, Tỷ lệ hủy ảo cao và Cơ cấu Ancillary mất cân đối.
+          </p>
           
           <div style={STYLES.flexGap}>
             <div style={STYLES.uploadBox}>
@@ -414,7 +414,7 @@ export default function App() {
             </div>
           </div>
           <button onClick={handleProcessData} disabled={isProcessing} style={STYLES.btnPrimary}>
-            {isProcessing ? "ĐANG IMPORT VÀ TRÍCH XUẤT DỮ LIỆU..." : "Import Dữ liệu & Kết xuất Báo cáo"}
+            {isProcessing ? "ĐANG IMPORT VÀ TRÍCH XUẤT DỮ LIỆU..." : "Import Dữ liệu & Kết xuất Báo cáo Kê toa"}
           </button>
         </div>
       </div>
@@ -431,8 +431,8 @@ export default function App() {
         
         <header style={STYLES.header}>
           <div>
-            <h1 style={STYLES.headerTitle}>Báo cáo Quản trị & Tối ưu Doanh thu - Tháng 01/2026</h1>
-            <p style={STYLES.headerSub}>Ứng dụng Pipeline Trích xuất Dữ liệu, Định giá 5 Tầng & Monte Carlo.</p>
+            <h1 style={STYLES.headerTitle}>Báo cáo Quản trị & Kê toa Chiến lược - Tháng 01/2026</h1>
+            <p style={STYLES.headerSub}>Ứng dụng Pipeline Trích xuất Dữ liệu, Định giá Đa tầng & Xác suất Monte Carlo.</p>
           </div>
           <div style={STYLES.statusSuccess}>✓ ĐÃ ĐỒNG BỘ DỮ LIỆU TỪ HỆ THỐNG</div>
         </header>
@@ -457,7 +457,7 @@ export default function App() {
               </div>
               <input type="range" min="45" max="95" value={targetOccupancy} onChange={(e) => setTargetOccupancy(Number(e.target.value))} style={STYLES.slider} />
               <div style={STYLES.helperText}>
-                Trung bình Công suất Lịch sử các tháng trước đạt <span style={STYLES.highlightText}>{CONFIG.HISTORICAL_AVG_OCCUPANCY}%</span>. Để nâng lên mốc <span style={STYLES.highlightText}>{targetOccupancy}%</span> trong tháng này, Khối Kinh doanh cần khai thác thêm <span style={STYLES.highlightText}>{Utils.formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng (Room Nights)</span>.
+                Trung bình Công suất Lịch sử các tháng trước đạt <span style={STYLES.highlightText}>{CONFIG.HISTORICAL_AVG_OCCUPANCY}%</span>. Để nâng lên mốc <span style={STYLES.highlightText}>{targetOccupancy}%</span> trong tháng này, Khối Kinh doanh cần bán thêm <span style={STYLES.highlightText}>{Utils.formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng (Room Nights)</span> thông qua các chiến lược mở rộng bên dưới.
               </div>
             </div>
 
@@ -474,18 +474,25 @@ export default function App() {
           </section>
 
           <div style={STYLES.flexGapSmall}>
-            <button onClick={() => setSelectedDayType("Weekday")} style={selectedDayType === "Weekday" ? STYLES.tabActive : STYLES.tab}>BỐI CẢNH: NGÀY TRONG TUẦN</button>
-            <button onClick={() => setSelectedDayType("Weekend")} style={selectedDayType === "Weekend" ? STYLES.tabActive : STYLES.tab}>BỐI CẢNH: CUỐI TUẦN</button>
+            <button onClick={() => setSelectedDayType("Weekday")} style={selectedDayType === "Weekday" ? STYLES.tabActive : STYLES.tab}>BỐI CẢNH: NGÀY TRONG TUẦN (WEEKDAY)</button>
+            <button onClick={() => setSelectedDayType("Weekend")} style={selectedDayType === "Weekend" ? STYLES.tabActive : STYLES.tab}>BỐI CẢNH: CUỐI TUẦN (WEEKEND)</button>
           </div>
 
           <section style={{ marginBottom: "50px" }}>
             <table style={STYLES.table}>
+              <colgroup>
+                <col style={{width: "16%"}} />
+                <col style={{width: "12%"}} />
+                <col style={{width: "25%"}} />
+                <col style={{width: "25%"}} />
+                <col style={{width: "22%"}} />
+              </colgroup>
               <thead>
                 <tr style={STYLES.tableHead}>
-                  <th style={STYLES.th}>HẠNG PHÒNG & TÌNH TRẠNG NGÀY</th>
-                  <th style={STYLES.th}>ĐỊNH GIÁ ĐA TẦNG (ADR)</th>
-                  <th style={STYLES.th}>CHIẾN LƯỢC PHÂN KHÚC KHÁCH HÀNG</th>
-                  <th style={STYLES.th}>CHIẾN LƯỢC KÊNH PHÂN PHỐI</th>
+                  <th style={STYLES.th}>HẠNG PHÒNG & TỒN KHO ĐỘNG</th>
+                  <th style={STYLES.th}>GIÁ ĐỀ XUẤT (ADR)</th>
+                  <th style={STYLES.th}>CHIẾN LƯỢC PHÂN KHÚC (WHO)</th>
+                  <th style={STYLES.th}>CHIẾN LƯỢC KÊNH (WHERE)</th>
                   <th style={STYLES.th}>DỊCH VỤ GIA TĂNG (ANCILLARY)</th>
                 </tr>
               </thead>
@@ -495,17 +502,9 @@ export default function App() {
                     <td style={STYLES.td}>
                       <div style={STYLES.roomName}>{room.name}</div>
                       <div style={STYLES.roomStat}>Sức chứa: <strong>{room.capacity} phòng</strong></div>
-                      
-                      <div style={{ fontSize: "13px", color: "#1e40af", marginBottom: "4px", fontWeight: "700" }}>
-                        Đã bán (Cập nhật): <strong>{room.dynamicSold} phòng</strong>
-                      </div>
-                      <div style={{ fontSize: "13px", color: "#059669", marginBottom: "12px", fontWeight: "700" }}>
-                        Khách trả (Check-out): <strong>+{room.checkOutRooms} phòng</strong>
-                      </div>
-                      
-                      <div style={STYLES.roomAvai}>
-                        Sẵn bán (Available): {Utils.formatNum(room.avai)}
-                      </div>
+                      <div style={{ fontSize: "12px", color: "#1e40af", marginBottom: "4px", fontWeight: "700" }}>Đã bán: <strong>{room.dynamicSold} phòng</strong></div>
+                      <div style={{ fontSize: "12px", color: "#059669", marginBottom: "12px", fontWeight: "700" }}>Khách trả: <strong>+{room.checkOutRooms} phòng</strong></div>
+                      <div style={STYLES.roomAvai}>Sẵn bán: {Utils.formatNum(room.avai)}</div>
                     </td>
                     <td style={STYLES.td}>
                       <div style={STYLES.priceOld}>{Utils.currency(room.oldPrice)}</div>
@@ -516,16 +515,18 @@ export default function App() {
                     </td>
                     <td style={STYLES.td}>
                       {room.who.map((w, idx) => (
-                        <div key={idx} style={{marginBottom: "12px"}}>
-                          <span style={STYLES.stratLevel}>{w.title}</span>
+                        <div key={idx} style={STYLES.stratSection}>
+                          <span style={STYLES.stratLevel}>{w.level}</span>
+                          <div style={STYLES.stratTitle}>{w.title}</div>
                           <div style={STYLES.stratDesc}>{w.desc}</div>
                         </div>
                       ))}
                     </td>
                     <td style={STYLES.td}>
                       {room.where.map((w, idx) => (
-                        <div key={idx} style={{marginBottom: "12px"}}>
-                          <span style={STYLES.stratLevel}>{w.title}</span>
+                        <div key={idx} style={STYLES.stratSection}>
+                          <span style={STYLES.stratLevel}>{w.level}</span>
+                          <div style={STYLES.stratTitle}>{w.title}</div>
                           <div style={STYLES.stratDesc}>{w.desc}</div>
                         </div>
                       ))}
@@ -541,13 +542,13 @@ export default function App() {
           </section>
 
           <section style={STYLES.impactSection}>
-            <h2 style={STYLES.impactHeader}>Kết quả Đạt được Kỳ vọng (Monte Carlo Analysis - Box Muller)</h2>
+            <h2 style={STYLES.impactHeader}>Kết quả Đạt được Kỳ vọng (Monte Carlo Analysis - Normal Distribution)</h2>
             <div style={STYLES.impactGrid}>
               <div style={STYLES.impactTextCol}>
                 <p style={STYLES.impactDesc}>
-                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn (Normal Distribution) để định lượng rủi ro kinh tế học: Lực cầu thị trường và Tỷ lệ hủy phòng ảo.
+                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn để định lượng rủi ro kinh tế học: Lực cầu thị trường biến thiên và Tỷ lệ hủy phòng ảo trên kênh OTA (Leakage).
                   <br/><br/>
-                  <strong>Lưu ý:</strong> Doanh thu kỳ vọng tính theo mức giá cơ sở (Base Rate), độc lập với biến động giá Lead Time ngắn hạn. Điều này phản ánh chính xác mục tiêu tăng trưởng dài hạn của Khối Kinh doanh.
+                  Kết hợp giải quyết bài toán phụ thuộc OTA, điều tiết phân khúc khách và <strong>Mục tiêu Công suất {targetOccupancy}%</strong>, Khối Kinh doanh có cơ sở phá vỡ giới hạn dự báo tĩnh.
                 </p>
                 <div style={STYLES.impactBaseBox}>
                   <div style={STYLES.impactBaseLabel}>MỐC DỰ BÁO TĨNH (BASELINE)</div>
@@ -557,7 +558,7 @@ export default function App() {
 
               <div style={STYLES.impactResultGrid}>
                 <div style={STYLES.impactTotalBox}>
-                  <div style={STYLES.impactTotalLabel}>TỔNG DOANH THU KỲ VỌNG (EXPECTED VALUE)</div>
+                  <div style={STYLES.impactTotalLabel}>TỔNG DOANH THU KỲ VỌNG ĐẠT ĐƯỢC</div>
                   <div style={STYLES.impactTotalVal}>{Utils.currency(impact.totalProjectedRev)}</div>
                 </div>
                 <div style={STYLES.impactGrowthBox}>
@@ -565,11 +566,11 @@ export default function App() {
                   <div style={{fontSize: "26px", fontWeight: "900", color: "#059669"}}>+{growthPercent.toFixed(1)}%</div>
                 </div>
                 <div style={STYLES.impactSubBox}>
-                  <div style={{fontSize: "12px", fontWeight: "800", color: "#475569", marginBottom: "8px"}}>ROOM REVENUE GAIN</div>
+                  <div style={{fontSize: "12px", fontWeight: "800", color: "#475569", marginBottom: "8px"}}>TỪ DOANH THU PHÒNG</div>
                   <div style={{fontSize: "22px", fontWeight: "900", color: "#0f172a"}}>+{Utils.currency(impact.meanRoomRev)}</div>
                 </div>
                 <div style={STYLES.impactAncilBox}>
-                  <div style={{fontSize: "12px", fontWeight: "800", color: "#475569", marginBottom: "8px"}}>ANCILLARY REVENUE GAIN</div>
+                  <div style={{fontSize: "12px", fontWeight: "800", color: "#475569", marginBottom: "8px"}}>TỪ DỊCH VỤ BỔ TRỢ (ANCILLARY)</div>
                   <div style={{fontSize: "22px", fontWeight: "900", color: "#2563eb"}}>+{Utils.currency(impact.meanAncillaryRev)}</div>
                 </div>
               </div>
