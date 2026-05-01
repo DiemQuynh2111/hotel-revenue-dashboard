@@ -15,6 +15,13 @@ const Utils = {
   }
 };
 
+const CONFIG = {
+  MC_ITERATIONS: 2000,
+  DAYS_IN_MONTH: 31,
+  TOTAL_ROOMS: 80,
+  ANCILLARY_RATIO: 0.18
+};
+
 // ============================================================================
 // MODULE 2: DATA EXTRACTOR (Bộ xử lý dữ liệu ĐỘC LẬP lấy từ file bạn nhập)
 // ============================================================================
@@ -33,84 +40,137 @@ const DataExtractor = {
     });
   },
 
-  getSheetData: (workbook, keyword) => {
+  getSheetData: (workbook, keyword, columnKeywords = []) => {
     if (!workbook) return [];
-    const sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes(keyword.toLowerCase()));
+    
+    // 1. Tìm theo tên sheet
+    let sheetName = workbook.SheetNames.find(n => n.toLowerCase().includes(keyword.toLowerCase()));
+    
+    // 2. Nếu là file CSV (chỉ 1 sheet)
+    if (!sheetName && workbook.SheetNames.length === 1) {
+      sheetName = workbook.SheetNames[0];
+    }
+
+    // 3. Dò quét nội dung các cột nếu bị mất tên
+    if (!sheetName) {
+      sheetName = workbook.SheetNames.find(n => {
+        const data = XLSX.utils.sheet_to_json(workbook.Sheets[n], { header: 1 });
+        if (data.length > 0) {
+          const headerStr = Object.values(data[0] || {}).join("").toLowerCase();
+          return columnKeywords.some(kw => headerStr.includes(kw));
+        }
+        return false;
+      });
+    }
+
     if (!sheetName) return [];
     return XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
   },
 
-  // Hàm quét và tính toán dữ liệu Tồn kho / Đã bán từ file thực tế
+  // HÀM QUÉT, LỌC THÁNG 1/2026 VÀ TÍNH TRUNG BÌNH TỒN KHO TỪ FILE CỦA BẠN
   processRealData: async (historyFile, forecastFile) => {
     const [histWb, forecastWb] = await Promise.all([
       DataExtractor.readFile(historyFile), 
       DataExtractor.readFile(forecastFile)
     ]);
 
-    // 1. Quét Forecast
+    // 1. QUÉT DỰ BÁO
     let metrics = { forecast: 125494, onHand: 110744 };
-    const forecastData = DataExtractor.getSheetData(forecastWb, "summary");
-    forecastData.forEach(row => {
-      const vals = Object.values(row);
-      if (vals.length >= 2 && !isNaN(parseFloat(vals[1]))) {
-        if (String(vals[0]).includes("Forecast Total")) metrics.forecast = parseFloat(vals[1]);
-        if (String(vals[0]).includes("On-hand Total")) metrics.onHand = parseFloat(vals[1]);
-      }
-    });
+    const forecastData = DataExtractor.getSheetData(forecastWb, "summary", ["forecast", "hand"]);
+    if (forecastData.length > 0) {
+      forecastData.forEach(row => {
+        const vals = Object.values(row);
+        if (vals.length >= 2 && !isNaN(parseFloat(vals[1]))) {
+          const keyStr = String(vals[0]).toLowerCase();
+          if (keyStr.includes("forecast total")) metrics.forecast = parseFloat(vals[1]);
+          if (keyStr.includes("on-hand total")) metrics.onHand = parseFloat(vals[1]);
+        }
+      });
+    }
 
-    // 2. Quét RoomInventory để lấy sức chứa & phòng trống tháng 1/2026
-    const invData = DataExtractor.getSheetData(histWb, "inventory");
+    // 2. QUÉT TỒN KHO (TÍNH TOÁN THEO YÊU CẦU CỦA BẠN)
+    const invData = DataExtractor.getSheetData(histWb, "inventory", ["available", "total"]);
     
-    // Khung chứa dữ liệu tổng trước khi chia trung bình
     let rawStats = {
-      Weekday: { RT_STD: { cap:0, avai:0, days:0 }, RT_DLX: { cap:0, avai:0, days:0 }, RT_STE: { cap:0, avai:0, days:0 } },
-      Weekend: { RT_STD: { cap:0, avai:0, days:0 }, RT_DLX: { cap:0, avai:0, days:0 }, RT_STE: { cap:0, avai:0, days:0 } }
+      Weekday: { RT_STD: { cap:0, avai:0, days:new Set() }, RT_DLX: { cap:0, avai:0, days:new Set() }, RT_STE: { cap:0, avai:0, days:new Set() } },
+      Weekend: { RT_STD: { cap:0, avai:0, days:new Set() }, RT_DLX: { cap:0, avai:0, days:new Set() }, RT_STE: { cap:0, avai:0, days:new Set() } }
     };
 
+    let syncStatus = false;
+
     invData.forEach(row => {
-      const month = String(row.month || "");
-      const date = String(row.inventory_date || row.date || "");
-      
-      // Chỉ lấy dữ liệu tháng 1/2026
-      if (month.includes("2026-01") || date.includes("2026-01")) {
-        const rt = row.room_type_id || row.room_type;
-        const dt = row.day_type === "Weekend" ? "Weekend" : "Weekday"; // Phân biệt Weekday/Weekend
-        
-        if (rawStats[dt] && rawStats[dt][rt]) {
-          rawStats[dt][rt].cap += parseFloat(row.rooms_total || 0);
-          rawStats[dt][rt].avai += parseFloat(row.rooms_available_for_sale || 0);
-          rawStats[dt][rt].days += 1;
+      let isTargetMonth = false;
+      let dateKey = "";
+
+      // Dò Ngày tháng cực kỳ chặt chẽ (Bất chấp kiểu Date hay String)
+      for (let key in row) {
+        const val = row[key];
+        if (val instanceof Date) {
+          if (val.getFullYear() === 2026 && val.getMonth() === 0) {
+            isTargetMonth = true;
+            dateKey = val.toISOString().split('T')[0];
+          }
+        } else if (typeof val === 'string') {
+          if (val.includes("2026-01") || val.includes("2026/01") || val.includes("1/2026")) {
+            isTargetMonth = true;
+            dateKey = val;
+          }
+        }
+      }
+
+      if (isTargetMonth) {
+        syncStatus = true;
+        // Bắt tên Loại phòng
+        const rtRaw = String(row.room_type_id || row.room_type || row.RoomType || "").toUpperCase();
+        let rt = "RT_STD";
+        if (rtRaw.includes("DLX") || rtRaw.includes("DELUXE")) rt = "RT_DLX";
+        if (rtRaw.includes("STE") || rtRaw.includes("SUITE")) rt = "RT_STE";
+
+        // Bắt Ngày trong tuần/Cuối tuần
+        const dtRaw = String(row.day_type || row.day_of_week || "").toLowerCase();
+        const dt = (dtRaw.includes("weekend") || dtRaw.includes("sat") || dtRaw.includes("sun")) ? "Weekend" : "Weekday";
+
+        // Bắt Số lượng
+        let capKey = Object.keys(row).find(k => k.toLowerCase().includes("total") || k.toLowerCase().includes("capacity"));
+        let avaiKey = Object.keys(row).find(k => k.toLowerCase().includes("available") || k.toLowerCase().includes("sale"));
+
+        const cap = capKey ? parseFloat(row[capKey]) : 0;
+        const avai = avaiKey ? parseFloat(row[avaiKey]) : 0;
+
+        if (!isNaN(cap) && !isNaN(avai) && dateKey) {
+          rawStats[dt][rt].cap += cap;
+          rawStats[dt][rt].avai += avai;
+          rawStats[dt][rt].days.add(dateKey); // Lưu ngày unique
         }
       }
     });
 
-    // 3. Đóng gói dữ liệu đầu ra (Trung bình mỗi ngày)
+    // 3. CHIA TRUNG BÌNH RA ĐẦU RA
     let finalInventory = { Weekday: {}, Weekend: {} };
-    
     const ROOM_NAMES = { RT_STD: "STANDARD ROOM", RT_DLX: "DELUXE ROOM", RT_STE: "EXECUTIVE SUITE" };
-    const BASE_PRICES = { RT_STD: 95, RT_DLX: 129, RT_STE: 220 }; // Lấy giá lịch sử
+    const BASE_PRICES = { RT_STD: 95, RT_DLX: 129, RT_STE: 220 }; 
 
     ["Weekday", "Weekend"].forEach(dayType => {
       ["RT_STD", "RT_DLX", "RT_STE"].forEach(roomType => {
         const stat = rawStats[dayType][roomType];
-        const days = stat.days > 0 ? stat.days : 1; // Tránh lỗi chia cho 0
+        const uniqueDaysCount = stat.days.size > 0 ? stat.days.size : 1; 
         
-        const avgCapacity = Math.round(stat.cap / days);
-        const avgAvai = Math.round(stat.avai / days);
-        const avgSold = avgCapacity - avgAvai; // Đã bán = Tổng - Trống
+        const avgCapacity = Math.round(stat.cap / uniqueDaysCount);
+        const avgAvai = Math.round(stat.avai / uniqueDaysCount);
+        const avgSold = avgCapacity - avgAvai; // SỨC CHỨA - CÒN TRỐNG = ĐÃ BÁN
 
-        // Nếu file không có tháng 01/2026, tự động fallback về số liệu mẫu để không bị sập App
+        // Nếu có Data file thì dùng Data file. Nếu không, Failsafe để app sống sót.
         finalInventory[dayType][roomType] = {
           name: ROOM_NAMES[roomType],
-          capacity: avgCapacity > 0 ? avgCapacity : (roomType === "RT_STD" ? 45 : roomType === "RT_DLX" ? 28 : 7),
-          sold: avgSold > 0 ? avgSold : (roomType === "RT_STD" ? 18 : roomType === "RT_DLX" ? 12 : 3),
-          baseAvai: avgAvai > 0 ? avgAvai : (roomType === "RT_STD" ? 27 : roomType === "RT_DLX" ? 16 : 4),
+          capacity: syncStatus && avgCapacity > 0 ? avgCapacity : (roomType === "RT_STD" ? 45 : roomType === "RT_DLX" ? 28 : 7),
+          sold: syncStatus && avgSold >= 0 ? avgSold : (roomType === "RT_STD" ? 18 : roomType === "RT_DLX" ? 12 : 3),
+          baseAvai: syncStatus && avgAvai > 0 ? avgAvai : (roomType === "RT_STD" ? 27 : roomType === "RT_DLX" ? 16 : 4),
           oldPrice: BASE_PRICES[roomType]
         };
       });
     });
 
-    return { metrics, inventoryData: finalInventory };
+    return { metrics, inventoryData: finalInventory, syncStatus };
   }
 };
 
@@ -167,7 +227,7 @@ export default function App() {
 
     const targetDailyRooms = Math.round(totalDailyRooms * (targetOccupancy / 100));
     const extraDailyRoomsToSell = Math.max(0, targetDailyRooms - totalSoldToday);
-    const extraMonthlyRoomNightsToSell = extraDailyRoomsToSell * 31; // Số phòng đêm
+    const extraMonthlyRoomNightsToSell = extraDailyRoomsToSell * CONFIG.DAYS_IN_MONTH; // Số phòng đêm
 
     // ĐỊNH GIÁ ĐA TẦNG THEO LEAD TIME
     let leadMultiplier = 1.0;
@@ -207,7 +267,7 @@ export default function App() {
     let successfulRoomRev = 0;
     const avgBaseAdr = processedRooms.reduce((sum, r) => sum + r.oldPrice, 0) / 3;
 
-    for (let i = 0; i < 2000; i++) {
+    for (let i = 0; i < CONFIG.MC_ITERATIONS; i++) {
       const demandCapture = Utils.randomNormal(0.85, 0.05);
       const cancelRatio = Utils.randomNormal(0.10, 0.02);
       
@@ -217,8 +277,8 @@ export default function App() {
       successfulRoomRev += (simulatedMonthlyRoomsSold * avgBaseAdr);
     }
 
-    const meanRoomRev = successfulRoomRev / 2000;
-    const meanAncillaryRev = meanRoomRev * 0.18; 
+    const meanRoomRev = successfulRoomRev / CONFIG.MC_ITERATIONS;
+    const meanAncillaryRev = meanRoomRev * CONFIG.ANCILLARY_RATIO; 
     const totalProjectedRev = appData.metrics.onHand + meanRoomRev + meanAncillaryRev;
     
     return { baseOccupancy, extraMonthlyRoomNightsToSell, leadReason, processedRooms, impact: { totalProjectedRev, meanRoomRev, meanAncillaryRev } };
@@ -235,11 +295,11 @@ export default function App() {
           
           <div style={STYLES.flexGap}>
             <div style={STYLES.uploadBox}>
-              <p style={STYLES.uploadTitle}>1. DỮ LIỆU LỊCH SỬ (CLEANED)</p>
+              <p style={STYLES.uploadTitle}>1. DỮ LIỆU LỊCH SỬ (CLEANED FILE)</p>
               <input type="file" accept=".xlsx,.csv" onChange={(e) => setHistoryFile(e.target.files[0])} />
             </div>
             <div style={STYLES.uploadBox}>
-              <p style={STYLES.uploadTitle}>2. DỮ LIỆU DỰ BÁO (FORECAST)</p>
+              <p style={STYLES.uploadTitle}>2. DỮ LIỆU DỰ BÁO (FORECAST FILE)</p>
               <input type="file" accept=".xlsx,.csv" onChange={(e) => setForecastFile(e.target.files[0])} />
             </div>
           </div>
@@ -260,8 +320,13 @@ export default function App() {
       <div style={STYLES.dashboardContainer}>
         
         <header style={STYLES.header}>
-          <h1 style={STYLES.headerTitle}>Báo cáo Quản trị & Tối ưu Doanh thu - Tháng 01/2026</h1>
-          <p style={STYLES.headerSub}>Ứng dụng Data Extractor Pipeline, Định giá 5 Tầng & Monte Carlo (Normal Distribution).</p>
+          <div>
+            <h1 style={STYLES.headerTitle}>Báo cáo Quản trị & Tối ưu Doanh thu - Tháng 01/2026</h1>
+            <p style={STYLES.headerSub}>Ứng dụng Data Extractor Pipeline, Định giá 5 Tầng & Monte Carlo.</p>
+          </div>
+          <div style={appData.syncStatus ? STYLES.statusSuccess : STYLES.statusWarning}>
+             {appData.syncStatus ? "ĐÃ ĐỒNG BỘ DỮ LIỆU FILE (DATA SYNCED)" : "DỮ LIỆU FILE LỖI - ĐANG DÙNG BASELINE"}
+          </div>
         </header>
 
         <div style={STYLES.contentArea}>
@@ -354,7 +419,7 @@ export default function App() {
             <div style={STYLES.impactGrid}>
               <div style={STYLES.impactTextCol}>
                 <p style={STYLES.impactDesc}>
-                  Hệ thống thực thi <strong>2000 phiên bản giả lập</strong> áp dụng phân phối chuẩn (Normal Distribution) để định lượng rủi ro kinh tế học: Lực cầu thị trường và Tỷ lệ hủy phòng ảo trên kênh OTA.
+                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn (Normal Distribution) để định lượng rủi ro kinh tế học: Lực cầu thị trường và Tỷ lệ hủy phòng ảo trên kênh OTA.
                   <br/><br/>
                   Kết hợp <strong>Định giá đa tầng</strong> và <strong>Mục tiêu Công suất {targetOccupancy}%</strong>, Khối Kinh doanh có cơ sở phá vỡ giới hạn dự báo tĩnh.
                 </p>
@@ -392,7 +457,7 @@ export default function App() {
 }
 
 // ============================================================================
-// THEME & STYLES
+// 5. THEME & STYLES (Trích xuất toàn bộ Inline Styles)
 // ============================================================================
 const STYLES = {
   layoutCenter: { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", position: "relative", padding: "20px", fontFamily: "system-ui, sans-serif" },
@@ -408,9 +473,11 @@ const STYLES = {
   layoutMain: { minHeight: "100vh", padding: "40px", fontFamily: "system-ui, sans-serif", color: "#0f172a" },
   bgBlurLight: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", backgroundImage: "url('image_74fb96.jpg')", backgroundSize: "cover", backgroundPosition: "center", filter: "blur(20px)", opacity: 0.25, zIndex: -1 },
   dashboardContainer: { maxWidth: "1400px", margin: "0 auto", background: "white", boxShadow: "0 10px 40px rgba(0,0,0,0.1)", border: "1px solid #e2e8f0" },
-  header: { background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a" },
+  header: { background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a", display: "flex", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { fontSize: "22px", fontWeight: "800", textTransform: "uppercase", margin: "0 0 8px 0", letterSpacing: "1px" },
   headerSub: { margin: 0, color: "#94a3b8", fontSize: "13px", fontWeight: "500" },
+  statusSuccess: { padding: "8px 15px", background: "#059669", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
+  statusWarning: { padding: "8px 15px", background: "#b45309", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
   contentArea: { padding: "40px" },
   
   grid2Col: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px", marginBottom: "40px" },
