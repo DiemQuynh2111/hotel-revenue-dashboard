@@ -11,7 +11,9 @@ const CONFIG = {
   HISTORICAL_AVG_OCCUPANCY: 44.2, 
   ANCILLARY_RATIO: 0.18,
   MC_PARAMS: { DEMAND_MEAN: 0.85, DEMAND_STD_DEV: 0.05, CANCEL_MEAN: 0.10, CANCEL_STD_DEV: 0.02 },
-  DEFAULT_METRICS: { forecast: 125494, onHand: 110744 }
+  DEFAULT_METRICS: { forecast: 125494, onHand: 110744 },
+  DAYS_WEEKDAY: 22,
+  DAYS_WEEKEND: 9
 };
 
 const STYLES = {
@@ -113,69 +115,66 @@ const STRATEGIES = {
   Weekday: {
     RT_STD: { 
       who: [
-        { level: "Ưu tiên 1", title: "Segment: Corporate", desc: "Theo phân tích, Corporate cung cấp lượng booking ngày thường ổn định. Mở rộng bán phòng Standard cho nhóm này giúp đảm bảo base công suất." },
-        { level: "Ưu tiên 2", title: "Segment: Group", desc: "Tận dụng nhóm lưu trú dài ngày (>6 đêm) để tối ưu hóa RevPAR, bù đắp sự suy giảm của Leisure." }
+        { level: "Ưu tiên 1", title: "Segment: Corporate", desc: "Đảm bảo base công suất ngày thường." },
+        { level: "Ưu tiên 2", title: "Segment: Group", desc: "Khai thác nhóm lưu trú dài ngày (>6 đêm)." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Channel: Corporate Contract", desc: "Tận dụng kênh B2B này để bảo vệ biên lợi nhuận, miễn 100% phí hoa hồng OTA." },
-        { level: "Bổ trợ", title: "Channel: Wholesale / Tour Operator", desc: "Kéo khách đoàn Group. Mặc dù chiết khấu cao nhưng đem lại volume lớn để đạt mục tiêu Occupancy." }
+        { level: "Kênh Chính", title: "Channel: Corporate Contract", desc: "Không tốn 17.8% hoa hồng OTA." }
       ], 
-      ancillary: { title: "Dịch vụ: F&B Bundle", desc: "Phân khúc Corporate có nhu cầu F&B nội khu cao. Gắn kèm ăn uống vào phòng Standard để tăng tổng chi tiêu trung bình." }
+      ancillary: { title: "Dịch vụ: F&B Bundle", desc: "Corporate có nhu cầu ăn uống tại chỗ cao." }
     },
     RT_DLX: { 
       who: [
-        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Đây là tệp khách chi phối 62% doanh thu với ADR cao nhất. Đẩy mạnh bán Deluxe giữa tuần để tối đa hóa Yield." },
-        { level: "Ưu tiên 2", title: "Segment: Corporate", desc: "Khách doanh nghiệp có ngân sách cao, sẵn sàng trả thêm để nâng cấp từ Standard lên Deluxe." }
+        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Tệp khách chi phối 62% doanh thu với ADR cao nhất." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Channel: Direct - Website", desc: "Phân tích cho thấy Direct đem lại Net Value rất tốt. Tập trung kéo khách Leisure về web để chặn tỷ lệ hủy 17.8% từ OTA." }
+        { level: "Kênh Chính", title: "Channel: Direct - Website", desc: "Kéo khách về web để chặn tỷ lệ hủy 17.8% từ OTA." }
       ], 
-      ancillary: { title: "Dịch vụ: Spa & Tour Upsell", desc: "Doanh thu bổ trợ đang quá lệ thuộc F&B. Tận dụng Leisure ở Deluxe để bán chéo Spa và Tour (biên lợi nhuận cao)." }
+      ancillary: { title: "Dịch vụ: Spa & Tour Upsell", desc: "Bán chéo Spa/Tour để gánh bớt sự độc tôn của F&B." }
     },
     RT_STE: { 
       who: [
-        { level: "Ưu tiên 1", title: "Segment: Corporate", desc: "Đón lõng các cấp quản lý hoặc chuyên gia đi công tác." }
+        { level: "Ưu tiên 1", title: "Segment: Corporate", desc: "Đón lõng các cấp quản lý hoặc chuyên gia." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Channel: Direct - Phone/Walk-in", desc: "Kênh này giúp chăm sóc khách hàng cá nhân hóa, triệt tiêu rủi ro No-show và giữ vững hình ảnh thương hiệu." }
+        { level: "Kênh Chính", title: "Channel: Direct - Phone", desc: "Chăm sóc cá nhân hóa, giữ vững thương hiệu." }
       ], 
-      ancillary: { title: "Dịch vụ: Trọn gói VIP", desc: "Tích hợp đưa đón sân bay và mọi tiện ích cao cấp nhất." }
+      ancillary: { title: "Dịch vụ: Trọn gói VIP", desc: "Tích hợp đưa đón sân bay và mọi tiện ích cao cấp." }
     }
   },
   Weekend: {
     RT_STD: { 
       who: [
-        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Cầu du lịch cuối tuần vô cùng dồi dào. Nhóm khách này giúp duy trì giá trị doanh thu phòng ở mức cao (82.79 USD)." }
+        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Cầu du lịch cuối tuần vô cùng dồi dào." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Channel: Booking.com / Agoda / Expedia", desc: "Bắt buộc dùng OTA để kéo Volume cực đại. Nhưng để chống leakage, yêu cầu áp dụng giá NonRefundable." },
-        { level: "Bổ trợ", title: "Channel: Direct - Website", desc: "Khuyến mãi ẩn để chuyển đổi dần khách OTA thành khách trực tiếp." }
+        { level: "Kênh Chính", title: "Channel: Booking/Agoda", desc: "Bắt buộc dùng OTA để kéo Volume, nhưng bán giá NRF." }
       ], 
-      ancillary: { title: "Dịch vụ: F&B Buffet Cuối tuần", desc: "Tối ưu nhà hàng cuối tuần bằng cách gộp chung bữa ăn vào giá phòng cho nhóm Leisure." }
+      ancillary: { title: "Dịch vụ: F&B Buffet", desc: "Tối ưu nhà hàng cuối tuần." }
     },
     RT_DLX: { 
       who: [
-        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Nhóm khách sẵn sàng chi trả cao cho tiện ích nghỉ dưỡng cuối tuần." }
+        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Khách sẵn sàng chi trả cao cho tiện ích." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Channel: Direct - Website", desc: "Chạy chiến dịch quảng cáo kỳ nghỉ cuối tuần để gom tệp khách hàng giá trị ròng cao." }
+        { level: "Kênh Chính", title: "Channel: Direct - Website", desc: "Chạy chiến dịch quảng cáo kỳ nghỉ cuối tuần." }
       ], 
-      ancillary: { title: "Dịch vụ: Spa Retreat", desc: "Cuối tuần khách Leisure lưu trú Deluxe có nhu cầu thư giãn rất cao, tập trung đẩy mạnh gói Spa." }
+      ancillary: { title: "Dịch vụ: Spa Retreat", desc: "Tập trung đẩy mạnh gói Spa." }
     },
     RT_STE: { 
       who: [
-        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Sức mua cuối tuần giúp công suất lấp đầy Suite đạt đỉnh 57.4%." }
+        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Sức mua lấp đầy Suite đạt đỉnh 57.4%." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Channel: Direct - Phone/Walk-in", desc: "Kênh Telesales nội bộ trực tiếp chốt đơn cho khách quen nhằm loại bỏ hoàn toàn tình trạng thất thoát doanh thu (130 ca No-show)." }
+        { level: "Kênh Chính", title: "Channel: Direct - Phone", desc: "Telesales nội bộ loại bỏ hoàn toàn tình trạng No-show." }
       ], 
-      ancillary: { title: "Dịch vụ: Tour Heritage", desc: "Cung cấp trải nghiệm tham quan thiết kế riêng, làm đa dạng hóa danh mục Ancillary." }
+      ancillary: { title: "Dịch vụ: Tour Heritage", desc: "Trải nghiệm tham quan thiết kế riêng." }
     }
   }
 };
 
 // ============================================================================
-// 4. DATA EXTRACTOR
+// 4. DATA EXTRACTOR (QUÉT DATA THỰC TẾ 100%)
 // ============================================================================
 const DataExtractor = {
   readFile: (file) => {
@@ -217,6 +216,8 @@ const DataExtractor = {
     ]);
 
     let metrics = { ...CONFIG.DEFAULT_METRICS };
+    
+    // 1. Quét Forecast
     const forecastData = DataExtractor.getSheetData(forecastWb, "summary", ["forecast"]);
     if (forecastData.length > 0) {
       forecastData.forEach(row => {
@@ -229,68 +230,97 @@ const DataExtractor = {
       });
     }
 
-    const invData = DataExtractor.getSheetData(histWb, "inventory", ["available", "total"]);
-    let rawStats = {
-      Weekday: { RT_STD: { cap:0, avai:0, count:0 }, RT_DLX: { cap:0, avai:0, count:0 }, RT_STE: { cap:0, avai:0, count:0 } },
-      Weekend: { RT_STD: { cap:0, avai:0, count:0 }, RT_DLX: { cap:0, avai:0, count:0 }, RT_STE: { cap:0, avai:0, count:0 } }
-    };
+    // 2. Quét RoomNights để tìm số lượng ĐÃ BÁN THỰC TẾ
+    const rnData = DataExtractor.getSheetData(histWb, "night", ["stay", "room_type"]);
+    let rawSold = { Weekday: { RT_STD: 0, RT_DLX: 0, RT_STE: 0 }, Weekend: { RT_STD: 0, RT_DLX: 0, RT_STE: 0 } };
 
-    invData.forEach(row => {
-      const rtRaw = String(row.room_type_id || row.room_type || row.RoomType || "").toUpperCase();
-      let rt = "RT_STD";
-      if (rtRaw.includes("DLX") || rtRaw.includes("DELUXE")) rt = "RT_DLX";
-      if (rtRaw.includes("STE") || rtRaw.includes("SUITE")) rt = "RT_STE";
+    // 3. Quét Reservations để tìm số lượng KHÁCH TRẢ PHÒNG THỰC TẾ (Dựa vào departure_date)
+    const resData = DataExtractor.getSheetData(histWb, "reservation", ["departure"]);
+    let rawCheckouts = { Weekday: { RT_STD: 0, RT_DLX: 0, RT_STE: 0 }, Weekend: { RT_STD: 0, RT_DLX: 0, RT_STE: 0 } };
 
-      const dtRaw = String(row.day_type || row.day_of_week || "").toLowerCase();
-      const dt = (dtRaw.includes("weekend") || dtRaw.includes("sat") || dtRaw.includes("sun")) ? "Weekend" : "Weekday";
+    let syncStatus = false;
 
-      let capKey = Object.keys(row).find(k => k.toLowerCase().includes("total") || k.toLowerCase().includes("capacity"));
-      let avaiKey = Object.keys(row).find(k => k.toLowerCase().includes("available") || k.toLowerCase().includes("sale"));
-
-      const cap = capKey ? parseFloat(row[capKey]) : 0;
-      const avai = avaiKey ? parseFloat(row[avaiKey]) : 0;
-
-      if (!isNaN(cap) && !isNaN(avai)) {
-        rawStats[dt][rt].cap += cap;
-        rawStats[dt][rt].avai += avai;
-        rawStats[dt][rt].count += 1;
+    // Quét file RoomNights
+    rnData.forEach(row => {
+      let isTargetMonth = false;
+      for (let key in row) {
+        const val = row[key];
+        if (val instanceof Date && val.getFullYear() === 2026 && val.getMonth() === 0) isTargetMonth = true;
+        else if (typeof val === 'string' && (val.includes("2026-01") || val.includes("2026/01") || val.includes("1/2026"))) isTargetMonth = true;
+      }
+      if (isTargetMonth) {
+        const status = String(row.occupancy_status || "").toLowerCase();
+        if (!status.includes("cancel")) {
+          syncStatus = true;
+          const rtRaw = String(row.room_type_id || row.room_type || "").toUpperCase();
+          let rt = "RT_STD";
+          if (rtRaw.includes("DLX") || rtRaw.includes("DELUXE")) rt = "RT_DLX";
+          if (rtRaw.includes("STE") || rtRaw.includes("SUITE")) rt = "RT_STE";
+          const dtRaw = String(row.day_type || "").toLowerCase();
+          const dt = (dtRaw.includes("weekend") || dtRaw.includes("sat") || dtRaw.includes("sun")) ? "Weekend" : "Weekday";
+          rawSold[dt][rt] += parseFloat(row.room_night_qty || row.qty || 1);
+        }
       }
     });
 
-    const TABLEAU_BASELINE = {
-      Weekday: { RT_STD: { cap: 45, sold: 19, avai: 26 }, RT_DLX: { cap: 28, sold: 14, avai: 14 }, RT_STE: { cap: 7, sold: 2, avai: 5 } },
-      Weekend: { RT_STD: { cap: 45, sold: 16, avai: 29 }, RT_DLX: { cap: 28, sold: 14, avai: 14 }, RT_STE: { cap: 7, sold: 4, avai: 3 } }
-    };
+    // Quét file Reservations để tính khách trả (Checkout)
+    resData.forEach(row => {
+      let isTargetMonth = false;
+      let depDateObj = null;
 
+      if (row.departure_date instanceof Date) {
+        depDateObj = row.departure_date;
+        if (depDateObj.getFullYear() === 2026 && depDateObj.getMonth() === 0) isTargetMonth = true;
+      } else if (typeof row.departure_date === 'string' && row.departure_date.includes("2026-01")) {
+        isTargetMonth = true;
+        depDateObj = new Date(row.departure_date);
+      } else if (typeof row.DepartureDate === 'string' && row.DepartureDate.includes("2026-01")) {
+        isTargetMonth = true;
+        depDateObj = new Date(row.DepartureDate);
+      }
+
+      const status = String(row.status || row.Status || "").toLowerCase();
+      const isCancelled = row.is_cancelled == 1 || status.includes("cancel");
+
+      if (isTargetMonth && !isCancelled) {
+        const rtRaw = String(row.room_type_id || row.room_type || "").toUpperCase();
+        let rt = "RT_STD";
+        if (rtRaw.includes("DLX") || rtRaw.includes("DELUXE")) rt = "RT_DLX";
+        if (rtRaw.includes("STE") || rtRaw.includes("SUITE")) rt = "RT_STE";
+
+        let dayOfWeek = depDateObj ? depDateObj.getDay() : 1; 
+        const dt = (dayOfWeek === 0 || dayOfWeek === 6) ? "Weekend" : "Weekday";
+        const roomsBooked = parseFloat(row.rooms_booked || row.RoomsBooked || 1);
+        
+        rawCheckouts[dt][rt] += roomsBooked;
+      }
+    });
+
+    // 4. Chia Trung Bình ra kết quả
     let finalInventory = { Weekday: {}, Weekend: {} };
+    const CAPACITIES = { RT_STD: 45, RT_DLX: 28, RT_STE: 7 };
     const ROOM_NAMES = { RT_STD: "STANDARD ROOM", RT_DLX: "DELUXE ROOM", RT_STE: "EXECUTIVE SUITE" };
     const BASE_PRICES = { RT_STD: 95, RT_DLX: 129, RT_STE: 220 }; 
 
     ["Weekday", "Weekend"].forEach(dayType => {
       ["RT_STD", "RT_DLX", "RT_STE"].forEach(roomType => {
-        const stat = rawStats[dayType][roomType];
+        const divider = dayType === "Weekday" ? CONFIG.DAYS_WEEKDAY : CONFIG.DAYS_WEEKEND;
         
-        let finalCap = TABLEAU_BASELINE[dayType][roomType].cap;
-        let finalAvai = TABLEAU_BASELINE[dayType][roomType].avai;
-        let finalSold = TABLEAU_BASELINE[dayType][roomType].sold;
-
-        if (stat.count > 0) {
-          finalCap = Math.round(stat.cap / stat.count);
-          finalAvai = Math.round(stat.avai / stat.count);
-          finalSold = finalCap - finalAvai;
-        }
+        const avgSold = Math.round(rawSold[dayType][roomType] / divider);
+        const avgCheckouts = Math.round(rawCheckouts[dayType][roomType] / divider);
+        const capacity = CAPACITIES[roomType];
 
         finalInventory[dayType][roomType] = {
           name: ROOM_NAMES[roomType],
-          capacity: finalCap,
-          sold: finalSold,
-          baseAvai: finalAvai,
+          capacity: capacity,
+          baseSold: syncStatus ? avgSold : (roomType === "RT_STD" ? 18 : roomType === "RT_DLX" ? 12 : 3),
+          baseCheckOuts: syncStatus ? avgCheckouts : (roomType === "RT_STD" ? 4 : roomType === "RT_DLX" ? 2 : 1),
           oldPrice: BASE_PRICES[roomType]
         };
       });
     });
 
-    return { metrics, inventoryData: finalInventory, syncStatus: true };
+    return { metrics, inventoryData: finalInventory, syncStatus };
   }
 };
 
@@ -315,7 +345,7 @@ export default function App() {
     setIsProcessing(false);
   };
 
-  // ĐỘNG CƠ PHÂN TÍCH VÀ ĐỘNG LỰC HỌC TỒN KHO
+  // ĐỘNG CƠ PHÂN TÍCH VÀ ĐỘNG LỰC HỌC TỒN KHO THEO LEAD TIME
   const analyticsData = useMemo(() => {
     if (!appData || !appData.inventoryData) return null;
 
@@ -326,6 +356,7 @@ export default function App() {
     const maxExtraDailyRooms = Math.max(0, targetDailyRooms - historicalSoldRooms);
     const extraMonthlyRoomNightsToSell = maxExtraDailyRooms * CONFIG.DAYS_IN_MONTH; 
 
+    // ĐỊNH GIÁ 5 TẦNG
     let leadMultiplier = 1.0;
     let leadReason = "";
 
@@ -334,7 +365,7 @@ export default function App() {
       leadReason = "[Tier 1 - Khẩn cấp]: Nhu cầu vọt lên sát ngày check-in. Khuyến nghị TĂNG GIÁ 15% để tối ưu hóa Yield.";
     } else if (simLeadTime <= 7) {
       leadMultiplier = 1.05;
-      leadReason = "[Tier 2 - Ngắn hạn]: Khách hàng đã chốt vé máy bay. Khuyến nghị TĂNG GIÁ 5% để thu hồi thặng dư tiêu dùng.";
+      leadReason = "[Tier 2 - Ngắn hạn]: Khách hàng đã chốt vé. Khuyến nghị TĂNG GIÁ 5% để thu hồi thặng dư tiêu dùng.";
     } else if (simLeadTime <= 14) {
       leadMultiplier = 1.00;
       leadReason = "[Tier 3 - Tiêu chuẩn]: Trạng thái cung cầu cân bằng. DUY TRÌ GIÁ BASE để duy trì Booking Velocity.";
@@ -346,6 +377,7 @@ export default function App() {
       leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume sớm. GIẢM GIÁ 10%, bắt buộc áp dụng Non-refundable 100%.";
     }
 
+    // Tiến độ chốt đơn (Booking Pace): Lead Time 30 -> 0%, Lead Time 1 -> 100%
     const pickupProgress = (30 - simLeadTime) / 29;
 
     const processedRooms = ["RT_STD", "RT_DLX", "RT_STE"].map(key => {
@@ -355,11 +387,14 @@ export default function App() {
       const roomTargetShare = Math.round(maxExtraDailyRooms * (roomBase.capacity / CONFIG.TOTAL_ROOMS));
       const pickupRooms = Math.round(roomTargetShare * pickupProgress);
       
+      // 1. TÍNH ĐÃ BÁN
       const dynamicSold = Math.min(roomBase.capacity, Math.round(roomBase.capacity * (CONFIG.HISTORICAL_AVG_OCCUPANCY/100)) + pickupRooms);
       
-      // LOGIC ĐÃ SỬA: Lượng khách trả tính theo tỷ lệ của lượng phòng ĐÃ BÁN HIỆN TẠI (dynamicSold)
-      const checkOutRooms = Math.round(dynamicSold * 0.2);
+      // 2. TÍNH KHÁCH TRẢ TỪ DỮ LIỆU THỰC TẾ (Bù trừ theo tiến độ đặt phòng)
+      // Khách trả phòng = Trung bình thực tế từ File + Lượng trả phòng của số khách mới mua
+      const checkOutRooms = Math.round(roomBase.baseCheckOuts + (pickupRooms * (roomBase.baseCheckOuts / (roomBase.baseSold || 1))));
       
+      // 3. TÍNH SẴN BÁN
       const dynamicAvai = Math.max(0, Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms));
 
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
@@ -368,16 +403,15 @@ export default function App() {
       return { key, dynamicSold, checkOutRooms, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
     });
 
+    // MÔ PHỎNG MONTE CARLO
     let successfulRoomRev = 0;
     const avgDynamicAdr = processedRooms.reduce((sum, r) => sum + r.dynamicAdr, 0) / 3;
 
     for (let i = 0; i < CONFIG.MC_ITERATIONS; i++) {
       const demandCapture = Utils.randomNormal(CONFIG.MC_PARAMS.DEMAND_MEAN, CONFIG.MC_PARAMS.DEMAND_STD_DEV);
       const cancelRatio = Utils.randomNormal(CONFIG.MC_PARAMS.CANCEL_MEAN, CONFIG.MC_PARAMS.CANCEL_STD_DEV);
-      
       const conversionRate = Math.max(0, Math.min(1, demandCapture)) * (1 - Math.max(0, Math.min(1, cancelRatio)));
       const simulatedMonthlyRoomsSold = extraMonthlyRoomNightsToSell * conversionRate;
-      
       successfulRoomRev += (simulatedMonthlyRoomsSold * avgDynamicAdr);
     }
 
@@ -395,10 +429,7 @@ export default function App() {
         <div style={STYLES.bgBlur} />
         <div style={STYLES.loginCard}>
           <h1 style={STYLES.heading}>Hệ thống Hoạch định Doanh thu (BI)</h1>
-          <p style={STYLES.subHeading}>
-            Giải pháp Kê toa (Prescriptive Analytics): Giảm phụ thuộc OTA, triệt tiêu Leakage và Đa dạng hóa Ancillary Revenue.
-          </p>
-          
+          <p style={STYLES.subHeading}>Giải pháp Kê toa (Prescriptive Analytics): Giảm phụ thuộc OTA, triệt tiêu Leakage và Đa dạng hóa Ancillary Revenue.</p>
           <div style={STYLES.flexGap}>
             <div style={STYLES.uploadBox}>
               <p style={STYLES.uploadTitle}>1. DỮ LIỆU LỊCH SỬ (CLEANED FILE)</p>
