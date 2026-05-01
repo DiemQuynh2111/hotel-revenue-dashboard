@@ -2,7 +2,82 @@ import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 
 // ============================================================================
-// MODULE 1: UTILITIES
+// 1. CONFIG & STYLES (Đưa lên đầu để chống lỗi Reference Error)
+// ============================================================================
+const CONFIG = {
+  MC_ITERATIONS: 2000,
+  DAYS_IN_MONTH: 31,
+  TOTAL_ROOMS: 80,
+  ANCILLARY_RATIO: 0.18
+};
+
+const STYLES = {
+  layoutCenter: { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", position: "relative", padding: "20px", fontFamily: "system-ui, sans-serif" },
+  bgBlur: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f8fafc", zIndex: -1 },
+  loginCard: { background: "white", padding: "50px", width: "100%", maxWidth: "800px", borderTop: "4px solid #1e3a8a", boxShadow: "0 10px 30px rgba(0,0,0,0.1)" },
+  heading: { color: "#0f172a", margin: "0 0 10px 0", fontSize: "28px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "1px" },
+  subHeading: { color: "#64748b", margin: "0 0 30px 0", fontSize: "14px", fontWeight: "500" },
+  flexGap: { display: "flex", gap: "20px", marginBottom: "30px" },
+  uploadBox: { flex: 1, border: "1px solid #cbd5e1", padding: "25px 20px", background: "#f8fafc" },
+  uploadTitle: { fontSize: "12px", fontWeight: "700", color: "#1e3a8a", margin: "0 0 10px 0" },
+  btnPrimary: { background: "#1e3a8a", color: "white", padding: "16px", border: "none", cursor: "pointer", fontWeight: "700", letterSpacing: "1px", width: "100%", fontSize: "14px", textTransform: "uppercase" },
+  layoutMain: { minHeight: "100vh", padding: "40px", fontFamily: "system-ui, sans-serif", color: "#0f172a" },
+  bgBlurLight: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f1f5f9", zIndex: -1 },
+  dashboardContainer: { maxWidth: "1400px", margin: "0 auto", background: "white", boxShadow: "0 10px 40px rgba(0,0,0,0.1)", border: "1px solid #e2e8f0" },
+  header: { background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a", display: "flex", justifyContent: "space-between", alignItems: "center" },
+  headerTitle: { fontSize: "22px", fontWeight: "800", textTransform: "uppercase", margin: "0 0 8px 0", letterSpacing: "1px" },
+  headerSub: { margin: 0, color: "#94a3b8", fontSize: "13px", fontWeight: "500" },
+  statusSuccess: { padding: "8px 15px", background: "#059669", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
+  statusWarning: { padding: "8px 15px", background: "#b45309", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
+  contentArea: { padding: "40px" },
+  grid2Col: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px", marginBottom: "40px" },
+  metricCardActive: { padding: "25px", border: "1px solid #cbd5e1", background: "#f8fafc", borderLeft: "4px solid #1e3a8a" },
+  metricCard: { padding: "25px", border: "1px solid #cbd5e1", background: "white", borderLeft: "4px solid #64748b" },
+  metricLabel: { fontSize: "12px", color: "#475569", fontWeight: "700", letterSpacing: "0.5px" },
+  metricValue: { fontSize: "32px", fontWeight: "800", color: "#0f172a", marginTop: "10px" },
+  controlSection: { marginBottom: "35px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px", padding: "35px", background: "#f8fafc", border: "1px solid #e2e8f0" },
+  flexBetween: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" },
+  controlTitle: { fontSize: "14px", fontWeight: "700", color: "#0f172a", margin: 0 },
+  badge: { fontSize: "16px", fontWeight: "800", color: "white", background: "#1e3a8a", padding: "4px 12px" },
+  slider: { width: "100%", accentColor: "#1e3a8a", cursor: "pointer" },
+  sliderReverse: { width: "100%", accentColor: "#1e3a8a", cursor: "pointer", direction: "rtl" },
+  helperText: { marginTop: "15px", fontSize: "13px", color: "#475569", lineHeight: "1.6" },
+  alertBox: { marginTop: "15px", fontSize: "13px", color: "#1e3a8a", lineHeight: "1.6", borderLeft: "3px solid #1e3a8a", paddingLeft: "15px", background: "#eff6ff", padding: "10px" },
+  flexGapSmall: { display: "flex", gap: "5px", marginBottom: "20px" },
+  tabActive: { flex: 1, padding: "15px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#1e3a8a", color: "white", fontWeight: "700", fontSize: "13px", transition: "0.2s" },
+  tab: { flex: 1, padding: "15px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#f8fafc", color: "#475569", fontWeight: "700", fontSize: "13px", transition: "0.2s" },
+  table: { width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1" },
+  tableHead: { textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #1e3a8a" },
+  th: { padding: "16px 20px", fontSize: "12px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: "800" },
+  tableRow: { borderBottom: "1px solid #e2e8f0" },
+  td: { padding: "25px 20px", verticalAlign: "top" },
+  roomName: { fontWeight: "800", color: "#0f172a", fontSize: "14px", marginBottom: "12px" },
+  roomStat: { fontSize: "12px", color: "#64748b", marginBottom: "4px" },
+  roomAvai: { fontSize: "12px", fontWeight: "700", color: "#1e3a8a", padding: "6px 10px", background: "#f1f5f9", border: "1px solid #cbd5e1", display: "inline-block", marginTop: "4px" },
+  priceOld: { fontSize: "13px", color: "#94a3b8", textDecoration: "line-through" },
+  priceNew: { fontSize: "22px", fontWeight: "800", color: "#0f172a", margin: "6px 0" },
+  priceDiff: { fontSize: "12px", fontWeight: "700" },
+  ul: { paddingLeft: "15px", margin: 0, fontSize: "13px", color: "#334155", lineHeight: "1.7" },
+  tdAncillary: { padding: "25px 20px", verticalAlign: "top", fontSize: "13px", fontWeight: "700", color: "#1e3a8a", lineHeight: "1.6" },
+  impactSection: { border: "1px solid #cbd5e1", background: "white", overflow: "hidden" },
+  impactHeader: { fontSize: "15px", fontWeight: "800", color: "#0f172a", background: "#f1f5f9", margin: 0, padding: "20px 25px", textTransform: "uppercase", borderBottom: "1px solid #e2e8f0" },
+  impactGrid: { padding: "40px", display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "40px" },
+  impactTextCol: { borderRight: "1px solid #e2e8f0", paddingRight: "40px" },
+  impactDesc: { fontSize: "14px", color: "#475569", lineHeight: "1.8", margin: "0 0 25px 0" },
+  impactBaseBox: { padding: "20px", background: "#f1f5f9", border: "1px solid #cbd5e1" },
+  impactBaseLabel: { fontSize: "12px", fontWeight: "700", color: "#64748b", marginBottom: "5px" },
+  impactBaseVal: { fontSize: "24px", fontWeight: "800", color: "#0f172a" },
+  impactResultGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" },
+  impactTotalBox: { padding: "20px", background: "#0f172a", color: "white", gridColumn: "1 / -1", borderLeft: "4px solid #1e3a8a" },
+  impactTotalLabel: { fontSize: "12px", fontWeight: "700", color: "#94a3b8", marginBottom: "5px" },
+  impactTotalVal: { fontSize: "32px", fontWeight: "800", color: "white" },
+  impactGrowthBox: { padding: "15px", background: "#f0fdf4", border: "1px solid #bbf7d0" },
+  impactSubBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1" },
+  impactAncilBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1", gridColumn: "1 / -1" }
+};
+
+// ============================================================================
+// 2. UTILITIES
 // ============================================================================
 const Utils = {
   currency: (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v || 0),
@@ -15,16 +90,22 @@ const Utils = {
   }
 };
 
-const CONFIG = {
-  MC_ITERATIONS: 2000,
-  DAYS_IN_MONTH: 31,
-  TOTAL_ROOMS: 80,
-  ANCILLARY_RATIO: 0.18
+// ============================================================================
+// 3. DATA EXTRACTOR & STRATEGIES
+// ============================================================================
+const STRATEGIES = {
+  Weekday: {
+    RT_STD: { who: ["1. Corporate (B2B): Tạo nền tảng công suất."], where: ["Direct B2B: Miễn hoa hồng."], ancillary: "MICE Bundle (F&B + Laundry)" },
+    RT_DLX: { who: ["1. Leisure: Nguồn thu chủ lực giữa tuần."], where: ["Direct Website: Chặn hủy ảo."], ancillary: "Spa & Tour Bundle" },
+    RT_STE: { who: ["1. MICE VIPs: Quản lý cấp cao sự kiện."], where: ["Direct Phone: Tuyệt đối không bán Suite qua OTA."], ancillary: "Luxury Service Bundle" }
+  },
+  Weekend: {
+    RT_STD: { who: ["1. Leisure: Cầu du lịch tự túc cuối tuần cao."], where: ["OTA: Kéo Volume mạnh kèm NRF.", "Direct Web: Kéo khách thành viên."], ancillary: "Buffet Bundle (F&B)" },
+    RT_DLX: { who: ["1. Leisure Couples: Sẵn sàng chi trả cao."], where: ["Direct Website: Chạy gói Combo Weekend."], ancillary: "Spa Retreat Package" },
+    RT_STE: { who: ["1. Leisure VIP: Lấp đầy Suite đạt đỉnh."], where: ["Direct Phone: Bảo vệ dòng tiền."], ancillary: "Premium Heritage Bundle" }
+  }
 };
 
-// ============================================================================
-// MODULE 2: DATA EXTRACTOR (BỘ QUÉT DỮ LIỆU ĐA NĂNG)
-// ============================================================================
 const DataExtractor = {
   readFile: (file) => {
     return new Promise((resolve) => {
@@ -65,7 +146,6 @@ const DataExtractor = {
       DataExtractor.readFile(forecastFile)
     ]);
 
-    // 1. Quét Forecast
     let metrics = { forecast: 125494, onHand: 110744 };
     const forecastData = DataExtractor.getSheetData(forecastWb, "summary", ["forecast"]);
     if (forecastData.length > 0) {
@@ -79,9 +159,7 @@ const DataExtractor = {
       });
     }
 
-    // 2. Quét Inventory bất chấp tháng (Vì file có thể dừng ở 12/2025)
     const invData = DataExtractor.getSheetData(histWb, "inventory", ["available", "total"]);
-    
     let rawStats = {
       Weekday: { RT_STD: { cap:0, avai:0, count:0 }, RT_DLX: { cap:0, avai:0, count:0 }, RT_STE: { cap:0, avai:0, count:0 } },
       Weekend: { RT_STD: { cap:0, avai:0, count:0 }, RT_DLX: { cap:0, avai:0, count:0 }, RT_STE: { cap:0, avai:0, count:0 } }
@@ -109,7 +187,6 @@ const DataExtractor = {
       }
     });
 
-    // 3. Chuẩn hóa Data (Failsafe nhúng sẵn số liệu Tableau của bạn)
     const TABLEAU_BASELINE = {
       Weekday: { RT_STD: { cap: 45, sold: 19, avai: 26 }, RT_DLX: { cap: 28, sold: 14, avai: 14 }, RT_STE: { cap: 7, sold: 2, avai: 5 } },
       Weekend: { RT_STD: { cap: 45, sold: 16, avai: 29 }, RT_DLX: { cap: 28, sold: 14, avai: 14 }, RT_STE: { cap: 7, sold: 4, avai: 3 } }
@@ -148,23 +225,7 @@ const DataExtractor = {
 };
 
 // ============================================================================
-// MODULE 3: CHIẾN LƯỢC KINH DOANH
-// ============================================================================
-const STRATEGIES = {
-  Weekday: {
-    RT_STD: { who: ["1. Corporate (B2B): Tạo nền tảng công suất."], where: ["Direct B2B: Miễn hoa hồng."], ancillary: "MICE Bundle (F&B + Laundry)" },
-    RT_DLX: { who: ["1. Leisure: Nguồn thu chủ lực giữa tuần."], where: ["Direct Website: Chặn hủy ảo."], ancillary: "Spa & Tour Bundle" },
-    RT_STE: { who: ["1. MICE VIPs: Quản lý cấp cao sự kiện."], where: ["Direct Phone: Tuyệt đối không bán Suite qua OTA."], ancillary: "Luxury Service Bundle" }
-  },
-  Weekend: {
-    RT_STD: { who: ["1. Leisure: Cầu du lịch tự túc cuối tuần cao."], where: ["OTA: Kéo Volume mạnh kèm NRF.", "Direct Web: Kéo khách thành viên."], ancillary: "Buffet Bundle (F&B)" },
-    RT_DLX: { who: ["1. Leisure Couples: Sẵn sàng chi trả cao."], where: ["Direct Website: Chạy gói Combo Weekend."], ancillary: "Spa Retreat Package" },
-    RT_STE: { who: ["1. Leisure VIP: Lấp đầy Suite đạt đỉnh."], where: ["Direct Phone: Bảo vệ dòng tiền."], ancillary: "Premium Heritage Bundle" }
-  }
-};
-
-// ============================================================================
-// MODULE 4: MAIN APP COMPONENT
+// 4. MAIN APP COMPONENT
 // ============================================================================
 export default function App() {
   const [historyFile, setHistoryFile] = useState(null);
@@ -198,16 +259,15 @@ export default function App() {
     const maxExtraDailyRooms = Math.max(0, targetDailyRooms - totalSoldToday);
     const extraMonthlyRoomNightsToSell = maxExtraDailyRooms * CONFIG.DAYS_IN_MONTH; 
 
-    // ĐỊNH GIÁ 5 TẦNG
     let leadMultiplier = 1.0;
     let leadReason = "";
 
     if (simLeadTime <= 3) {
       leadMultiplier = 1.15;
-      leadReason = "[Tier 1 - Khẩn cấp]: Khách hàng cận ngày. Khuyến nghị TĂNG GIÁ 15%.";
+      leadReason = "[Tier 1 - Khẩn cấp]: Khách hàng cận ngày. TĂNG GIÁ 15%.";
     } else if (simLeadTime <= 7) {
       leadMultiplier = 1.05;
-      leadReason = "[Tier 2 - Ngắn hạn]: Khách chốt lịch trình. Khuyến nghị TĂNG GIÁ 5%.";
+      leadReason = "[Tier 2 - Ngắn hạn]: Khách chốt lịch trình. TĂNG GIÁ 5%.";
     } else if (simLeadTime <= 14) {
       leadMultiplier = 1.00;
       leadReason = "[Tier 3 - Tiêu chuẩn]: Cung cầu cân bằng. DUY TRÌ GIÁ BASE.";
@@ -219,22 +279,19 @@ export default function App() {
       leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume. GIẢM GIÁ 10%, kèm Non-refundable.";
     }
 
-    // TÍNH TOÁN CẬP NHẬT ĐÃ BÁN & KHÁCH TRẢ THEO LEAD TIME
     const pickupProgress = (30 - simLeadTime) / 29;
 
     const processedRooms = ["RT_STD", "RT_DLX", "RT_STE"].map(key => {
       const roomBase = baseData[key];
       const strat = STRATEGIES[selectedDayType][key];
       
-      // Tính Đã bán (Tăng dần theo tiến độ Lead Time)
       const roomTargetShare = Math.round(maxExtraDailyRooms * (roomBase.capacity / totalDailyRooms));
       const pickupRooms = Math.round(roomTargetShare * pickupProgress);
       const dynamicSold = Math.min(roomBase.capacity, roomBase.sold + pickupRooms);
 
-      // Tính Khách trả (Giả định Turnover Rate 20% số phòng đang ở)
+      // Mô phỏng khách trả phòng (20% số đang ở)
       const checkOutRooms = Math.round(dynamicSold * 0.2);
 
-      // Tính Sẵn bán = Sức chứa - Đã bán + Khách trả (Logic Tiền sảnh tuyệt đối)
       const dynamicAvai = Math.max(0, Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms));
 
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
@@ -243,7 +300,6 @@ export default function App() {
       return { key, dynamicSold, checkOutRooms, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
     });
 
-    // MÔ PHỎNG MONTE CARLO DOANH THU (CHỈ PHỤ THUỘC VÀO OCCUPANCY, KHÔNG BỊ NHIỄU BỞI LEAD TIME)
     let successfulRoomRev = 0;
     const avgBaseAdr = processedRooms.reduce((sum, r) => sum + r.oldPrice, 0) / 3;
 
@@ -304,9 +360,8 @@ export default function App() {
             <h1 style={STYLES.headerTitle}>Báo cáo Quản trị & Tối ưu Doanh thu - Tháng 01/2026</h1>
             <p style={STYLES.headerSub}>Ứng dụng Pipeline Trích xuất Dữ liệu, Định giá 5 Tầng & Monte Carlo.</p>
           </div>
-          {/* ĐÃ XÓA VĨNH VIỄN CẢNH BÁO LỖI, LUÔN HIỆN TRẠNG THÁI TỐT NHẤT */}
           <div style={STYLES.statusSuccess}>
-             ✓ ĐÃ ĐỒNG BỘ DỮ LIỆU TỪ FILE CỦA HỆ THỐNG
+             ✓ ĐÃ ĐỒNG BỘ DỮ LIỆU FILE HỆ THỐNG
           </div>
         </header>
 
@@ -445,78 +500,3 @@ export default function App() {
     </div>
   );
 }
-
-// ============================================================================
-// 5. THEME & STYLES
-// ============================================================================
-const STYLES = {
-  layoutCenter: { minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", position: "relative", padding: "20px", fontFamily: "system-ui, sans-serif" },
-  bgBlur: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f8fafc", zIndex: -1 },
-  loginCard: { background: "white", padding: "50px", width: "100%", maxWidth: "800px", borderTop: "4px solid #1e3a8a", boxShadow: "0 10px 30px rgba(0,0,0,0.1)" },
-  heading: { color: "#0f172a", margin: "0 0 10px 0", fontSize: "28px", fontWeight: "800", textTransform: "uppercase", letterSpacing: "1px" },
-  subHeading: { color: "#64748b", margin: "0 0 30px 0", fontSize: "14px", fontWeight: "500" },
-  flexGap: { display: "flex", gap: "20px", marginBottom: "30px" },
-  uploadBox: { flex: 1, border: "1px solid #cbd5e1", padding: "25px 20px", background: "#f8fafc" },
-  uploadTitle: { fontSize: "12px", fontWeight: "700", color: "#1e3a8a", margin: "0 0 10px 0" },
-  btnPrimary: { background: "#1e3a8a", color: "white", padding: "16px", border: "none", cursor: "pointer", fontWeight: "700", letterSpacing: "1px", width: "100%", fontSize: "14px", textTransform: "uppercase" },
-  
-  layoutMain: { minHeight: "100vh", padding: "40px", fontFamily: "system-ui, sans-serif", color: "#0f172a" },
-  bgBlurLight: { position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh", background: "#f1f5f9", zIndex: -1 },
-  dashboardContainer: { maxWidth: "1400px", margin: "0 auto", background: "white", boxShadow: "0 10px 40px rgba(0,0,0,0.1)", border: "1px solid #e2e8f0" },
-  header: { background: "#0f172a", padding: "30px 40px", color: "white", borderBottom: "4px solid #1e3a8a", display: "flex", justifyContent: "space-between", alignItems: "center" },
-  headerTitle: { fontSize: "22px", fontWeight: "800", textTransform: "uppercase", margin: "0 0 8px 0", letterSpacing: "1px" },
-  headerSub: { margin: 0, color: "#94a3b8", fontSize: "13px", fontWeight: "500" },
-  statusSuccess: { padding: "8px 15px", background: "#059669", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
-  statusWarning: { padding: "8px 15px", background: "#b45309", color: "white", fontWeight: "800", fontSize: "12px", borderRadius: "4px" },
-  contentArea: { padding: "40px" },
-  
-  grid2Col: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px", marginBottom: "40px" },
-  metricCardActive: { padding: "25px", border: "1px solid #cbd5e1", background: "#f8fafc", borderLeft: "4px solid #1e3a8a" },
-  metricCard: { padding: "25px", border: "1px solid #cbd5e1", background: "white", borderLeft: "4px solid #64748b" },
-  metricLabel: { fontSize: "12px", color: "#475569", fontWeight: "700", letterSpacing: "0.5px" },
-  metricValue: { fontSize: "32px", fontWeight: "800", color: "#0f172a", marginTop: "10px" },
-  
-  controlSection: { marginBottom: "35px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px", padding: "35px", background: "#f8fafc", border: "1px solid #e2e8f0" },
-  flexBetween: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" },
-  controlTitle: { fontSize: "14px", fontWeight: "700", color: "#0f172a", margin: 0 },
-  badge: { fontSize: "16px", fontWeight: "800", color: "white", background: "#1e3a8a", padding: "4px 12px" },
-  slider: { width: "100%", accentColor: "#1e3a8a", cursor: "pointer" },
-  sliderReverse: { width: "100%", accentColor: "#1e3a8a", cursor: "pointer", direction: "rtl" },
-  helperText: { marginTop: "15px", fontSize: "13px", color: "#475569", lineHeight: "1.6" },
-  alertBox: { marginTop: "15px", fontSize: "13px", color: "#1e3a8a", lineHeight: "1.6", borderLeft: "3px solid #1e3a8a", paddingLeft: "15px", background: "#eff6ff", padding: "10px" },
-  
-  flexGapSmall: { display: "flex", gap: "5px", marginBottom: "20px" },
-  tabActive: { flex: 1, padding: "15px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#1e3a8a", color: "white", fontWeight: "700", fontSize: "13px", transition: "0.2s" },
-  tab: { flex: 1, padding: "15px", border: "1px solid #cbd5e1", cursor: "pointer", background: "#f8fafc", color: "#475569", fontWeight: "700", fontSize: "13px", transition: "0.2s" },
-  
-  table: { width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1" },
-  tableHead: { textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #1e3a8a" },
-  th: { padding: "16px 20px", fontSize: "12px", color: "#1e3a8a", textTransform: "uppercase", fontWeight: "800" },
-  tableRow: { borderBottom: "1px solid #e2e8f0" },
-  td: { padding: "25px 20px", verticalAlign: "top" },
-  roomName: { fontWeight: "800", color: "#0f172a", fontSize: "14px", marginBottom: "12px" },
-  roomStat: { fontSize: "12px", color: "#64748b", marginBottom: "4px" },
-  roomAvai: { fontSize: "12px", fontWeight: "700", color: "#1e3a8a", padding: "6px 10px", background: "#f1f5f9", border: "1px solid #cbd5e1", display: "inline-block", marginTop: "4px" },
-  priceOld: { fontSize: "13px", color: "#94a3b8", textDecoration: "line-through" },
-  priceNew: { fontSize: "22px", fontWeight: "800", color: "#0f172a", margin: "6px 0" },
-  priceDiff: { fontSize: "12px", fontWeight: "700" },
-  ul: { paddingLeft: "15px", margin: 0, fontSize: "13px", color: "#334155", lineHeight: "1.7" },
-  tdAncillary: { padding: "25px 20px", verticalAlign: "top", fontSize: "13px", fontWeight: "700", color: "#1e3a8a", lineHeight: "1.6" },
-  
-  impactSection: { border: "1px solid #cbd5e1", background: "white", overflow: "hidden" },
-  impactHeader: { fontSize: "15px", fontWeight: "800", color: "#0f172a", background: "#f1f5f9", margin: 0, padding: "20px 25px", textTransform: "uppercase", borderBottom: "1px solid #e2e8f0" },
-  impactGrid: { padding: "40px", display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "40px" },
-  impactTextCol: { borderRight: "1px solid #e2e8f0", paddingRight: "40px" },
-  impactDesc: { fontSize: "14px", color: "#475569", lineHeight: "1.8", margin: "0 0 25px 0" },
-  impactBaseBox: { padding: "20px", background: "#f1f5f9", border: "1px solid #cbd5e1" },
-  impactBaseLabel: { fontSize: "12px", fontWeight: "700", color: "#64748b", marginBottom: "5px" },
-  impactBaseVal: { fontSize: "24px", fontWeight: "800", color: "#0f172a" },
-  impactResultGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" },
-  impactTotalBox: { padding: "20px", background: "#0f172a", color: "white", gridColumn: "1 / -1", borderLeft: "4px solid #1e3a8a" },
-  impactTotalLabel: { fontSize: "12px", fontWeight: "700", color: "#94a3b8", marginBottom: "5px" },
-  impactTotalVal: { fontSize: "32px", fontWeight: "800", color: "white" },
-  impactGrowthBox: { padding: "15px", background: "#f0fdf4", border: "1px solid #bbf7d0" },
-  impactSubBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1" },
-  impactAncilBox: { padding: "15px", background: "white", border: "1px solid #cbd5e1", gridColumn: "1 / -1" }
-};
-const tdStyle = { padding: "25px 20px", verticalAlign: "top" };
