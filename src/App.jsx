@@ -1,18 +1,11 @@
 import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 
-// 1. FORMAT TIỀN TỆ & SỐ LIỆU (ĐÃ SỬA LỖI TÊN HÀM TẠI ĐÂY)
-function currency(v) {
-  const num = Number(v);
-  if (isNaN(num)) return "$0";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(num);
-}
+// FORMAT TIỀN TỆ & SỐ LIỆU
+const currency = (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v || 0);
+const formatNum = (v) => new Intl.NumberFormat("en-US").format(Math.round(v));
 
-function formatNumber(v) {
-  return new Intl.NumberFormat("en-US").format(Math.round(v));
-}
-
-// 2. HÀM ĐỌC EXCEL (TÍCH HỢP CƠ CHẾ FAILSAFE CHỐNG CRASH)
+// HÀM ĐỌC EXCEL (FAILSAFE CHỐNG CRASH)
 const readExcel = (file) => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -39,20 +32,19 @@ export default function App() {
   const [simLeadTime, setSimLeadTime] = useState(15); 
   const [targetOccupancy, setTargetOccupancy] = useState(65);
 
-  // TỒN KHO GỐC (DỰA TRÊN DỮ LIỆU TABLEAU)
-  const DAILY_CAPACITY = { RT_STD: 45, RT_DLX: 28, RT_STE: 7 };
+  // TỒN KHO CHUẨN THEO NGÀY (DỰA TRÊN DỮ LIỆU TABLEAU)
   const TOTAL_DAILY_ROOMS = 80;
   
   const BASE_INVENTORY = {
     Weekday: {
-      RT_STD: { name: "STANDARD ROOM", sold: 19, baseAvai: 26, oldPrice: 92 },
-      RT_DLX: { name: "DELUXE ROOM", sold: 14, baseAvai: 14, oldPrice: 129 },
-      RT_STE: { name: "EXECUTIVE SUITE", sold: 2, baseAvai: 5, oldPrice: 211 }
+      RT_STD: { name: "STANDARD ROOM", capacity: 45, sold: 19, baseAvai: 26, oldPrice: 92 },
+      RT_DLX: { name: "DELUXE ROOM", capacity: 28, sold: 14, baseAvai: 14, oldPrice: 129 },
+      RT_STE: { name: "EXECUTIVE SUITE", capacity: 7, sold: 2, baseAvai: 5, oldPrice: 211 }
     },
     Weekend: {
-      RT_STD: { name: "STANDARD ROOM", sold: 16, baseAvai: 29, oldPrice: 95 },
-      RT_DLX: { name: "DELUXE ROOM", sold: 14, baseAvai: 14, oldPrice: 129 },
-      RT_STE: { name: "EXECUTIVE SUITE", sold: 4, baseAvai: 3, oldPrice: 223 }
+      RT_STD: { name: "STANDARD ROOM", capacity: 45, sold: 16, baseAvai: 29, oldPrice: 95 },
+      RT_DLX: { name: "DELUXE ROOM", capacity: 28, sold: 14, baseAvai: 14, oldPrice: 129 },
+      RT_STE: { name: "EXECUTIVE SUITE", capacity: 7, sold: 4, baseAvai: 3, oldPrice: 223 }
     }
   };
 
@@ -101,7 +93,7 @@ export default function App() {
     try {
       const [histWb, forecastWb] = await Promise.all([readExcel(historyFile), readExcel(forecastFile)]);
 
-      // Dữ liệu Baseline dự phòng nếu file tải lên bị hỏng cấu trúc
+      // Dữ liệu Baseline dự phòng
       let forecastTotal = 125494;
       let onHandTotal = 110744;
 
@@ -127,7 +119,7 @@ export default function App() {
     }
   };
 
-  // ĐỘNG CƠ PHÂN TÍCH (ANALYTICS ENGINE)
+  // ĐỘNG CƠ PHÂN TÍCH & ĐỊNH GIÁ
   const analyticsData = useMemo(() => {
     if (!appData) return null;
 
@@ -135,9 +127,11 @@ export default function App() {
     const totalSoldToday = baseData.RT_STD.sold + baseData.RT_DLX.sold + baseData.RT_STE.sold;
     const baseOccupancy = (totalSoldToday / TOTAL_DAILY_ROOMS) * 100;
 
-    // Tính quỹ phòng mục tiêu
+    // Tính quỹ phòng mục tiêu THEO NGÀY (Daily Snapshot)
     const targetDailyRooms = Math.round(TOTAL_DAILY_ROOMS * (targetOccupancy / 100));
     const extraDailyRoomsToSell = Math.max(0, targetDailyRooms - totalSoldToday);
+    
+    // Nhân 31 ngày chỉ dùng duy nhất cho việc Dự phóng Doanh thu Monte Carlo
     const extraMonthlyRoomsToSell = extraDailyRoomsToSell * 31; 
 
     // ĐỘNG CƠ ĐỊNH GIÁ 5 TẦNG (5-TIER PRICING ENGINE)
@@ -161,22 +155,19 @@ export default function App() {
       leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume sớm. GIẢM GIÁ 10%, bắt buộc áp dụng 100% Non-refundable để triệt tiêu tỷ lệ hủy ảo.";
     }
 
-    // Mô phỏng sức tiêu thụ tồn kho theo Lead Time
-    const inventoryFactor = Math.min(1, 0.2 + (0.8 * (simLeadTime / 25)));
-
     const processedRooms = ["RT_STD", "RT_DLX", "RT_STE"].map(key => {
       const roomBase = baseData[key];
       const strat = STRATEGIES[selectedDayType][key];
       
-      const dynamicAvai = Math.max(0, Math.round(roomBase.baseAvai * inventoryFactor));
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
       const priceDiff = ((dynamicAdr / roomBase.oldPrice) - 1) * 100;
 
-      return { key, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
+      return { key, dynamicAdr, priceDiff, ...roomBase, ...strat };
     });
 
-    // MÔ PHỎNG MONTE CARLO (2000 ITERATIONS)
+    // MÔ PHỎNG MONTE CARLO DOANH THU THÁNG (2000 ITERATIONS)
     let successfulRoomRev = 0;
+    const avgDynamicAdr = processedRooms.reduce((sum, r) => sum + r.dynamicAdr, 0) / 3;
     
     for (let i = 0; i < 2000; i++) {
       const simulatedDemandCapture = 0.75 + Math.random() * 0.20;
@@ -184,15 +175,14 @@ export default function App() {
       const conversionRate = simulatedDemandCapture * (1 - simulatedCancelRatio);
 
       const simulatedMonthlyRoomsSold = extraMonthlyRoomsToSell * conversionRate;
-      const avgDynamicAdr = processedRooms.reduce((sum, r) => sum + r.dynamicAdr, 0) / 3;
       successfulRoomRev += (simulatedMonthlyRoomsSold * avgDynamicAdr);
     }
 
     const meanRoomRev = successfulRoomRev / 2000;
-    const meanAncillaryRev = meanRoomRev * 0.18; 
+    const meanAncillaryRev = meanRoomRev * 0.18; // Tỷ lệ Ancillary Lịch sử
     const totalProjectedRev = appData.metrics.onHand + meanRoomRev + meanAncillaryRev;
     
-    return { baseOccupancy, extraMonthlyRoomsToSell, leadReason, processedRooms, impact: { totalProjectedRev, meanRoomRev, meanAncillaryRev } };
+    return { baseOccupancy, extraDailyRoomsToSell, leadReason, processedRooms, impact: { totalProjectedRev, meanRoomRev, meanAncillaryRev } };
 
   }, [appData, selectedDayType, simLeadTime, targetOccupancy]);
 
@@ -223,7 +213,7 @@ export default function App() {
     );
   }
 
-  const { baseOccupancy, extraMonthlyRoomsToSell, leadReason, processedRooms, impact } = analyticsData;
+  const { baseOccupancy, extraDailyRoomsToSell, leadReason, processedRooms, impact } = analyticsData;
   const growthPercent = ((impact.totalProjectedRev / appData.metrics.forecast) - 1) * 100;
 
   return (
@@ -261,7 +251,7 @@ export default function App() {
               </div>
               <input type="range" min="40" max="95" value={targetOccupancy} onChange={(e) => setTargetOccupancy(Number(e.target.value))} style={{ width: "100%", accentColor: "#1e3a8a", cursor: "pointer", height: "4px" }} />
               <div style={{ marginTop: "15px", fontSize: "13px", color: "#475569", lineHeight: "1.6" }}>
-                Công suất cơ sở: <strong>{baseOccupancy.toFixed(1)}%</strong>. Quỹ phòng yêu cầu bán thêm để đạt chỉ tiêu: <strong style={{color:"#1e3a8a"}}>{formatNumber(extraMonthlyRoomsToSell)} phòng/tháng</strong>.
+                Công suất cơ sở: <strong>{baseOccupancy.toFixed(1)}%</strong>. Quỹ phòng yêu cầu bán thêm để đạt chỉ tiêu: <strong style={{color:"#1e3a8a"}}>{formatNum(extraDailyRoomsToSell)} phòng / ngày</strong>.
               </div>
             </div>
 
@@ -288,7 +278,7 @@ export default function App() {
             <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #cbd5e1" }}>
               <thead>
                 <tr style={{ textAlign: "left", background: "#f8fafc", borderBottom: "2px solid #1e3a8a" }}>
-                  <th style={thStyle}>HẠNG PHÒNG & TỒN KHO ĐỘNG</th>
+                  <th style={thStyle}>HẠNG PHÒNG & TỒN KHO</th>
                   <th style={thStyle}>ĐỊNH GIÁ ĐA TẦNG (ADR)</th>
                   <th style={thStyle}>MỤC TIÊU PHÂN KHÚC KHÁCH HÀNG</th>
                   <th style={thStyle}>CHIẾN LƯỢC KÊNH PHÂN PHỐI</th>
@@ -300,10 +290,10 @@ export default function App() {
                   <tr key={room.key} style={{ borderBottom: "1px solid #e2e8f0" }}>
                     <td style={tdStyle}>
                       <div style={{ fontWeight: "800", color: "#0f172a", fontSize: "14px", marginBottom: "12px" }}>{room.name}</div>
-                      <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Sức chứa (Capacity): <strong>{formatNumber(DAILY_CAPACITY[room.key])}</strong></div>
-                      <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>Đã bán (Sold): <strong>{formatNumber(room.sold)}</strong></div>
+                      <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>Sức chứa / ngày: <strong>{room.capacity}</strong></div>
+                      <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>Đã bán / ngày: <strong>{room.sold}</strong></div>
                       <div style={{ fontSize: "12px", fontWeight: "700", color: "#1e3a8a", padding: "6px 10px", background: "#f1f5f9", border: "1px solid #cbd5e1", display: "inline-block" }}>
-                        Tồn kho mở bán: {formatNumber(room.avai)}
+                        Tồn kho mở bán: {room.baseAvai}
                       </div>
                     </td>
                     <td style={tdStyle}>
@@ -321,7 +311,7 @@ export default function App() {
                     <td style={tdStyle}>
                       <ul style={{ paddingLeft: "15px", margin: 0, fontSize: "13px", color: "#334155", lineHeight: "1.7" }}>
                         {room.where.map((w, idx) => (
-                          <li key={idx} style={{ marginBottom: "8px" }} dangerouslySetInnerHTML={{ __html: w.replace(/(Kênh \d)/g, '<strong>$1</strong>') }} />
+                          <li key={idx} style={{ marginBottom: "8px" }} dangerouslySetInnerHTML={{ __html: w.replace(/(Direct - B2B Contract|OTA|Direct Website|Direct Phone \/ GDS)/g, '<strong>$1</strong>') }} />
                         ))}
                       </ul>
                     </td>
@@ -343,7 +333,7 @@ export default function App() {
                 <p style={{ fontSize: "14px", color: "#475569", lineHeight: "1.8", margin: "0 0 25px 0" }}>
                   Hệ thống thực thi <strong>2000 phiên bản giả lập ngẫu nhiên</strong> nhằm định lượng rủi ro kinh tế học: Lực cầu thị trường biến thiên (75% - 95%) và Tỷ lệ hủy phòng ảo trên kênh OTA (siết chặt từ 17.8% xuống mức 8%-13%).
                   <br/><br/>
-                  Thông qua cơ chế <strong>Định giá đa tầng (Multi-tier Pricing)</strong> theo Lead Time nhằm thu hồi thặng dư tiêu dùng và thiết lập <strong>Mục tiêu Công suất {targetOccupancy}%</strong>, Khối Kinh doanh hoàn toàn có cơ sở phá vỡ giới hạn dự báo tĩnh, thúc đẩy tăng trưởng thực chất.
+                  Thông qua cơ chế <strong>Định giá đa tầng (Multi-tier Pricing)</strong> theo Lead Time nhằm thu hồi thặng dư tiêu dùng và thiết lập <strong>Mục tiêu Công suất {targetOccupancy}%</strong>, Khối Kinh doanh hoàn toàn có cơ sở phá vỡ giới hạn dự báo tĩnh, thúc đẩy tăng trưởng doanh thu toàn tháng.
                 </p>
                 <div style={{ padding: "20px", background: "#f8fafc", border: "1px solid #cbd5e1" }}>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: "#64748b", marginBottom: "5px" }}>MỐC DỰ BÁO TĨNH (BASELINE)</div>
