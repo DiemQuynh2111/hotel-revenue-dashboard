@@ -2,13 +2,13 @@ import React, { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 
 // ============================================================================
-// 1. CẤU HÌNH & STYLES (Đưa lên đầu để tránh lỗi)
+// 1. CẤU HÌNH & STYLES
 // ============================================================================
 const CONFIG = {
   MC_ITERATIONS: 2000,
   DAYS_IN_MONTH: 31,
   TOTAL_ROOMS: 80,
-  HISTORICAL_AVG_OCCUPANCY: 44.2, // Base lịch sử theo phân tích Storyboard
+  HISTORICAL_AVG_OCCUPANCY: 44.2, 
   ANCILLARY_RATIO: 0.18,
   MC_PARAMS: { DEMAND_MEAN: 0.85, DEMAND_STD_DEV: 0.05, CANCEL_MEAN: 0.10, CANCEL_STD_DEV: 0.02 },
   DEFAULT_METRICS: { forecast: 125494, onHand: 110744 }
@@ -107,68 +107,71 @@ const Utils = {
 };
 
 // ============================================================================
-// 3. CHIẾN LƯỢC KINH DOANH (TÁI CẤU TRÚC THEO PHÂN TÍCH STORYBOARD)
+// 3. CHIẾN LƯỢC KINH DOANH CHUẨN HÓA DATA 100% TỪ FILE
+// (Segments: Corporate, Leisure, Group) 
+// (Channels: Direct - Website, Direct - Phone/Walk-in, Booking.com, Agoda, Expedia, Corporate Contract, Wholesale / Tour Operator)
 // ============================================================================
 const STRATEGIES = {
   Weekday: {
     RT_STD: { 
       who: [
-        { level: "Ưu tiên 1", title: "Khách Corporate (B2B)", desc: "Giảm rủi ro tập trung quá mức vào Leisure. Khách công tác tạo nền tảng công suất ổn định giữa tuần." },
-        { level: "Ưu tiên 2", title: "Khách Đoàn (Group)", desc: "Tận dụng lợi thế lưu trú dài ngày (>6 đêm) để tối ưu hóa biên lợi nhuận cố định." }
+        { level: "Ưu tiên 1", title: "Segment: Corporate", desc: "Theo phân tích, Corporate cung cấp lượng booking ngày thường ổn định. Mở rộng bán phòng Standard cho nhóm này giúp đảm bảo base công suất." },
+        { level: "Ưu tiên 2", title: "Segment: Group", desc: "Tận dụng nhóm lưu trú dài ngày (>6 đêm) để tối ưu hóa RevPAR, bù đắp sự suy giảm của Leisure." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Direct B2B Contract", desc: "Không tốn 17.8% hoa hồng OTA, bảo vệ tuyệt đối Net ADR." },
-        { level: "Bổ trợ", title: "Kênh OTA", desc: "Chỉ mở bán để giải phóng tồn kho phút chót (Last-minute booking)." }
+        { level: "Kênh Chính", title: "Channel: Corporate Contract", desc: "Tận dụng kênh B2B này để bảo vệ biên lợi nhuận, miễn 100% phí hoa hồng OTA." },
+        { level: "Bổ trợ", title: "Channel: Wholesale / Tour Operator", desc: "Kéo khách đoàn Group. Mặc dù chiết khấu cao nhưng đem lại volume lớn để đạt mục tiêu Occupancy." }
       ], 
-      ancillary: { title: "MICE Bundle (F&B + Laundry)", desc: "Đóng gói dịch vụ giặt ủi và ẩm thực. Tăng chi tiêu trên mỗi khách (RevPAC) mà không phụ thuộc vào tiền phòng." }
+      ancillary: { title: "Dịch vụ: F&B Bundle", desc: "Phân khúc Corporate có nhu cầu F&B nội khu cao. Gắn kèm ăn uống vào phòng Standard để tăng tổng chi tiêu trung bình." }
     },
     RT_DLX: { 
       who: [
-        { level: "Ưu tiên 1", title: "Leisure (Nghỉ dưỡng)", desc: "Nguồn thu chủ lực mang lại mức ADR cao nhất trong các ngày thường." },
-        { level: "Ưu tiên 2", title: "Bleisure (Công tác + Nghỉ dưỡng)", desc: "Khách B2B có khả năng chi trả thêm để nâng cấp hạng phòng." }
+        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Đây là tệp khách chi phối 62% doanh thu với ADR cao nhất. Đẩy mạnh bán Deluxe giữa tuần để tối đa hóa Yield." },
+        { level: "Ưu tiên 2", title: "Segment: Corporate", desc: "Khách doanh nghiệp có ngân sách cao, sẵn sàng trả thêm để nâng cấp từ Standard lên Deluxe." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Direct Website", desc: "Chuyển dịch booking từ OTA về Web để triệt tiêu tỷ lệ hủy ảo (Lost Revenue) đang ở mức cao." }
+        { level: "Kênh Chính", title: "Channel: Direct - Website", desc: "Phân tích cho thấy Direct đem lại Net Value rất tốt. Tập trung kéo khách Leisure về web để chặn tỷ lệ hủy 17.8% từ OTA." }
       ], 
-      ancillary: { title: "Spa & Wellness Cross-sell", desc: "Phá vỡ thế độc tôn của F&B (hiện chiếm >52%). Tặng voucher Spa để kích thích nhu cầu các dịch vụ biên lợi nhuận cao." }
+      ancillary: { title: "Dịch vụ: Spa & Tour Upsell", desc: "Doanh thu bổ trợ đang quá lệ thuộc F&B. Tận dụng Leisure ở Deluxe để bán chéo Spa và Tour (biên lợi nhuận cao)." }
     },
     RT_STE: { 
       who: [
-        { level: "Ưu tiên 1", title: "MICE VIPs / C-Level", desc: "Tệp khách có ngân sách công ty dồi dào, không nhạy cảm về giá phòng." }
+        { level: "Ưu tiên 1", title: "Segment: Corporate", desc: "Đón lõng các cấp quản lý hoặc chuyên gia đi công tác." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Direct Phone / GDS", desc: "Bán qua Sales nội bộ để chăm sóc cá nhân hóa. Tuyệt đối không xả hàng lên OTA làm giảm giá trị thương hiệu." }
+        { level: "Kênh Chính", title: "Channel: Direct - Phone/Walk-in", desc: "Kênh này giúp chăm sóc khách hàng cá nhân hóa, triệt tiêu rủi ro No-show và giữ vững hình ảnh thương hiệu." }
       ], 
-      ancillary: { title: "Executive Lounge & Transfer", desc: "Cung cấp xe đưa đón sân bay và đặc quyền truy cập Lounge riêng tư." }
+      ancillary: { title: "Dịch vụ: Trọn gói VIP", desc: "Tích hợp đưa đón sân bay và mọi tiện ích cao cấp nhất." }
     }
   },
   Weekend: {
     RT_STD: { 
       who: [
-        { level: "Ưu tiên 1", title: "FIT / Leisure Khách lẻ", desc: "Nguồn cầu lớn nhất giúp duy trì giá trị doanh thu phòng ở mức cao vào cuối tuần." }
+        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Cầu du lịch cuối tuần vô cùng dồi dào. Nhóm khách này giúp duy trì giá trị doanh thu phòng ở mức cao (82.79 USD)." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "OTA (Booking/Agoda)", desc: "Dùng thuật toán OTA để kéo Volume, NHƯNG BẮT BUỘC bán giá Non-refundable để chặn Hủy phòng/No-show." }
+        { level: "Kênh Chính", title: "Channel: Booking.com / Agoda / Expedia", desc: "Bắt buộc dùng OTA để kéo Volume cực đại. Nhưng để chống leakage, yêu cầu áp dụng giá NonRefundable." },
+        { level: "Bổ trợ", title: "Channel: Direct - Website", desc: "Khuyến mãi ẩn để chuyển đổi dần khách OTA thành khách trực tiếp." }
       ], 
-      ancillary: { title: "Weekend Buffet Bundle", desc: "Khách Leisure có xu hướng chi tiêu F&B cuối tuần. Tích hợp buffet vào giá phòng để chốt sale nhanh." }
+      ancillary: { title: "Dịch vụ: F&B Buffet Cuối tuần", desc: "Tối ưu nhà hàng cuối tuần bằng cách gộp chung bữa ăn vào giá phòng cho nhóm Leisure." }
     },
     RT_DLX: { 
       who: [
-        { level: "Ưu tiên 1", title: "Couples / Staycation", desc: "Cặp đôi hoặc khách địa phương tìm kiếm không gian lãng mạn dịp cuối tuần." }
+        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Nhóm khách sẵn sàng chi trả cao cho tiện ích nghỉ dưỡng cuối tuần." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Direct Social & Web", desc: "Chạy quảng cáo nhắm mục tiêu (Targeted Ads) các gói Combo tình yêu để thu thập Data khách hàng." }
+        { level: "Kênh Chính", title: "Channel: Direct - Website", desc: "Chạy chiến dịch quảng cáo kỳ nghỉ cuối tuần để gom tệp khách hàng giá trị ròng cao." }
       ], 
-      ancillary: { title: "Romantic Retreat Package", desc: "Tích hợp Private Dining (Bữa tối lãng mạn) và setup phòng. Phân khúc này có tỷ lệ Attach Rate dịch vụ bổ trợ rất cao." }
+      ancillary: { title: "Dịch vụ: Spa Retreat", desc: "Cuối tuần khách Leisure lưu trú Deluxe có nhu cầu thư giãn rất cao, tập trung đẩy mạnh gói Spa." }
     },
     RT_STE: { 
       who: [
-        { level: "Ưu tiên 1", title: "Gia đình thượng lưu", desc: "Nhóm gia đình cần không gian rộng. Phân khúc này làm lấp đầy Suite đạt đỉnh 57.4% dịp cuối tuần." }
+        { level: "Ưu tiên 1", title: "Segment: Leisure", desc: "Sức mua cuối tuần giúp công suất lấp đầy Suite đạt đỉnh 57.4%." }
       ], 
       where: [
-        { level: "Kênh Chính", title: "Loyalty Program", desc: "Bán chéo cho khách quen (Return guests) để bảo vệ dòng tiền và tối ưu Net Value." }
+        { level: "Kênh Chính", title: "Channel: Direct - Phone/Walk-in", desc: "Kênh Telesales nội bộ trực tiếp chốt đơn cho khách quen nhằm loại bỏ hoàn toàn tình trạng thất thoát doanh thu (130 ca No-show)." }
       ], 
-      ancillary: { title: "Family Heritage Experience", desc: "Cung cấp Tour văn hóa thiết kế riêng, bù đắp sự thiếu đa dạng trong cơ cấu Ancillary hiện tại." }
+      ancillary: { title: "Dịch vụ: Tour Heritage", desc: "Cung cấp trải nghiệm tham quan thiết kế riêng, làm đa dạng hóa danh mục Ancillary." }
     }
   }
 };
@@ -320,10 +323,7 @@ export default function App() {
 
     const baseData = appData.inventoryData[selectedDayType];
 
-    // SỬ DỤNG 44.2% LÀM BASELINE LỊCH SỬ THAY VÌ SỐ TỒN KHO NGÀY HÔM ĐÓ
     const historicalSoldRooms = Math.round(CONFIG.TOTAL_ROOMS * (CONFIG.HISTORICAL_AVG_OCCUPANCY / 100));
-
-    // Tính số phòng cần bán ĐỂ BÙ ĐẮP KHOẢNG TRỐNG TỪ 44.2% LÊN MỤC TIÊU
     const targetDailyRooms = Math.round(CONFIG.TOTAL_ROOMS * (targetOccupancy / 100));
     const maxExtraDailyRooms = Math.max(0, targetDailyRooms - historicalSoldRooms);
     const extraMonthlyRoomNightsToSell = maxExtraDailyRooms * CONFIG.DAYS_IN_MONTH; 
@@ -334,19 +334,19 @@ export default function App() {
 
     if (simLeadTime <= 3) {
       leadMultiplier = 1.15;
-      leadReason = "[Tier 1 - Khẩn cấp]: Nhu cầu vọt lên sát ngày check-in. Khuyến nghị TĂNG GIÁ 15% để tối ưu hóa Yield.";
+      leadReason = "[Tier 1 - Khẩn cấp]: Cầu cận ngày. Khuyến nghị TĂNG GIÁ 15%. (Tránh áp dụng cho OTA để giảm rủi ro Leakage)";
     } else if (simLeadTime <= 7) {
       leadMultiplier = 1.05;
-      leadReason = "[Tier 2 - Ngắn hạn]: Khách hàng đã chốt vé máy bay. Khuyến nghị TĂNG GIÁ 5% để thu hồi thặng dư tiêu dùng.";
+      leadReason = "[Tier 2 - Ngắn hạn]: Khách đã chốt lịch trình. TĂNG GIÁ 5%. (Phù hợp bán qua Direct Website)";
     } else if (simLeadTime <= 14) {
       leadMultiplier = 1.00;
-      leadReason = "[Tier 3 - Tiêu chuẩn]: Trạng thái cung cầu cân bằng. DUY TRÌ GIÁ BASE để duy trì Booking Velocity.";
+      leadReason = "[Tier 3 - Tiêu chuẩn]: Cung cầu cân bằng. DUY TRÌ GIÁ BASE. (Ổn định công suất nhóm Corporate/Group)";
     } else if (simLeadTime <= 21) {
       leadMultiplier = 0.95;
-      leadReason = "[Tier 4 - Đặt sớm]: Ưu đãi kích cầu. GIẢM GIÁ 5%, kèm điều khoản hoàn hủy chặt chẽ (Phạt 50%).";
+      leadReason = "[Tier 4 - Đặt sớm]: Kích cầu. GIẢM GIÁ 5%. Tích hợp các gói Ancillary (Spa/Tour) để gia tăng RevPAC.";
     } else {
       leadMultiplier = 0.90;
-      leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume sớm. GIẢM GIÁ 10%, bắt buộc áp dụng Non-refundable 100%.";
+      leadReason = "[Tier 5 - Dài hạn]: Thu hút Base Volume. GIẢM GIÁ 10%, áp dụng Non-Refundable để khắc phục triệt để tỷ lệ hủy ảo.";
     }
 
     const pickupProgress = (30 - simLeadTime) / 29;
@@ -358,11 +358,8 @@ export default function App() {
       const roomTargetShare = Math.round(maxExtraDailyRooms * (roomBase.capacity / CONFIG.TOTAL_ROOMS));
       const pickupRooms = Math.round(roomTargetShare * pickupProgress);
       
-      // Khách trả phòng = 20%
-      const checkOutRooms = Math.round(roomBase.capacity * (CONFIG.HISTORICAL_AVG_OCCUPANCY/100) * 0.2);
-      
-      // Sẵn bán
       const dynamicSold = Math.min(roomBase.capacity, Math.round(roomBase.capacity * (CONFIG.HISTORICAL_AVG_OCCUPANCY/100)) + pickupRooms);
+      const checkOutRooms = Math.round(roomBase.capacity * (CONFIG.HISTORICAL_AVG_OCCUPANCY/100) * 0.2);
       const dynamicAvai = Math.max(0, Math.min(roomBase.capacity, roomBase.capacity - dynamicSold + checkOutRooms));
 
       const dynamicAdr = roomBase.oldPrice * leadMultiplier;
@@ -371,9 +368,8 @@ export default function App() {
       return { key, dynamicSold, checkOutRooms, avai: dynamicAvai, dynamicAdr, priceDiff, ...roomBase, ...strat };
     });
 
-    // MÔ PHỎNG MONTE CARLO
     let successfulRoomRev = 0;
-    const avgBaseAdr = processedRooms.reduce((sum, r) => sum + r.oldPrice, 0) / 3;
+    const avgDynamicAdr = processedRooms.reduce((sum, r) => sum + r.dynamicAdr, 0) / 3;
 
     for (let i = 0; i < CONFIG.MC_ITERATIONS; i++) {
       const demandCapture = Utils.randomNormal(CONFIG.MC_PARAMS.DEMAND_MEAN, CONFIG.MC_PARAMS.DEMAND_STD_DEV);
@@ -382,7 +378,7 @@ export default function App() {
       const conversionRate = Math.max(0, Math.min(1, demandCapture)) * (1 - Math.max(0, Math.min(1, cancelRatio)));
       const simulatedMonthlyRoomsSold = extraMonthlyRoomNightsToSell * conversionRate;
       
-      successfulRoomRev += (simulatedMonthlyRoomsSold * avgBaseAdr);
+      successfulRoomRev += (simulatedMonthlyRoomsSold * avgDynamicAdr);
     }
 
     const meanRoomRev = successfulRoomRev / CONFIG.MC_ITERATIONS;
@@ -400,7 +396,7 @@ export default function App() {
         <div style={STYLES.loginCard}>
           <h1 style={STYLES.heading}>Hệ thống Hoạch định Doanh thu (BI)</h1>
           <p style={STYLES.subHeading}>
-            Cung cấp Giải pháp Kê toa (Prescriptive Analytics) khắc phục triệt để tình trạng: Phụ thuộc OTAs, Tỷ lệ hủy ảo cao và Cơ cấu Ancillary mất cân đối.
+            Giải pháp Kê toa (Prescriptive Analytics): Giảm phụ thuộc OTA, triệt tiêu Leakage và Đa dạng hóa Ancillary Revenue.
           </p>
           
           <div style={STYLES.flexGap}>
@@ -432,9 +428,9 @@ export default function App() {
         <header style={STYLES.header}>
           <div>
             <h1 style={STYLES.headerTitle}>Báo cáo Quản trị & Kê toa Chiến lược - Tháng 01/2026</h1>
-            <p style={STYLES.headerSub}>Ứng dụng Pipeline Trích xuất Dữ liệu, Định giá Đa tầng & Xác suất Monte Carlo.</p>
+            <p style={STYLES.headerSub}>Tái cân bằng Kênh phân phối, Phân khúc khách hàng & Tối ưu hóa Doanh thu bổ trợ.</p>
           </div>
-          <div style={STYLES.statusSuccess}>✓ ĐÃ ĐỒNG BỘ DỮ LIỆU TỪ HỆ THỐNG</div>
+          <div style={STYLES.statusSuccess}>✓ ĐÃ ĐỒNG BỘ DATA & PHÂN TÍCH STORYBOARD</div>
         </header>
 
         <div style={STYLES.contentArea}>
@@ -457,7 +453,7 @@ export default function App() {
               </div>
               <input type="range" min="45" max="95" value={targetOccupancy} onChange={(e) => setTargetOccupancy(Number(e.target.value))} style={STYLES.slider} />
               <div style={STYLES.helperText}>
-                Trung bình Công suất Lịch sử các tháng trước đạt <span style={STYLES.highlightText}>{CONFIG.HISTORICAL_AVG_OCCUPANCY}%</span>. Để nâng lên mốc <span style={STYLES.highlightText}>{targetOccupancy}%</span> trong tháng này, Khối Kinh doanh cần bán thêm <span style={STYLES.highlightText}>{Utils.formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng (Room Nights)</span> thông qua các chiến lược mở rộng bên dưới.
+                Trung bình Công suất Lịch sử chỉ đạt <span style={STYLES.highlightText}>{CONFIG.HISTORICAL_AVG_OCCUPANCY}%</span>. Để kéo công suất lên mức <span style={STYLES.highlightText}>{targetOccupancy}%</span>, Khối Kinh doanh cần triển khai chiến lược để khai thác thêm <span style={STYLES.highlightText}>{Utils.formatNum(extraMonthlyRoomNightsToSell)} Đêm phòng (Room Nights)</span>.
               </div>
             </div>
 
@@ -468,7 +464,7 @@ export default function App() {
               </div>
               <input type="range" min="1" max="30" value={simLeadTime} onChange={(e) => setSimLeadTime(Number(e.target.value))} style={STYLES.sliderReverse} />
               <div style={STYLES.alertBox}>
-                <strong>PHẢN ỨNG GIÁ:</strong> {leadReason}
+                <strong>PHẢN ỨNG GIÁ TỐI ƯU:</strong> {leadReason}
               </div>
             </div>
           </section>
@@ -489,10 +485,10 @@ export default function App() {
               </colgroup>
               <thead>
                 <tr style={STYLES.tableHead}>
-                  <th style={STYLES.th}>HẠNG PHÒNG & TỒN KHO ĐỘNG</th>
+                  <th style={STYLES.th}>HẠNG PHÒNG & TỒN KHO</th>
                   <th style={STYLES.th}>GIÁ ĐỀ XUẤT (ADR)</th>
-                  <th style={STYLES.th}>CHIẾN LƯỢC PHÂN KHÚC (WHO)</th>
-                  <th style={STYLES.th}>CHIẾN LƯỢC KÊNH (WHERE)</th>
+                  <th style={STYLES.th}>CHIẾN LƯỢC PHÂN KHÚC (SEGMENTS)</th>
+                  <th style={STYLES.th}>CHIẾN LƯỢC KÊNH (CHANNELS)</th>
                   <th style={STYLES.th}>DỊCH VỤ GIA TĂNG (ANCILLARY)</th>
                 </tr>
               </thead>
@@ -542,13 +538,13 @@ export default function App() {
           </section>
 
           <section style={STYLES.impactSection}>
-            <h2 style={STYLES.impactHeader}>Kết quả Đạt được Kỳ vọng (Monte Carlo Analysis - Normal Distribution)</h2>
+            <h2 style={STYLES.impactHeader}>Kết quả Đạt được Kỳ vọng (Dynamic Monte Carlo Analysis)</h2>
             <div style={STYLES.impactGrid}>
               <div style={STYLES.impactTextCol}>
                 <p style={STYLES.impactDesc}>
-                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn để định lượng rủi ro kinh tế học: Lực cầu thị trường biến thiên và Tỷ lệ hủy phòng ảo trên kênh OTA (Leakage).
+                  Hệ thống thực thi <strong>{CONFIG.MC_ITERATIONS} phiên bản giả lập</strong> áp dụng phân phối chuẩn để định lượng rủi ro kinh tế học: Lực cầu thị trường biến thiên và Tỷ lệ hủy phòng ảo (Leakage).
                   <br/><br/>
-                  Kết hợp giải quyết bài toán phụ thuộc OTA, điều tiết phân khúc khách và <strong>Mục tiêu Công suất {targetOccupancy}%</strong>, Khối Kinh doanh có cơ sở phá vỡ giới hạn dự báo tĩnh.
+                  <strong>Tái mô phỏng Động (Dynamic Resimulation):</strong> Mức Doanh thu Kỳ vọng sẽ phản ứng tức thời với mức giá (ADR) được điều chỉnh theo thời gian Lead Time. Điều này khẳng định việc áp dụng mức giá hợp lý theo từng thời điểm quyết định trực tiếp tới dòng tiền thực nhận.
                 </p>
                 <div style={STYLES.impactBaseBox}>
                   <div style={STYLES.impactBaseLabel}>MỐC DỰ BÁO TĨNH (BASELINE)</div>
