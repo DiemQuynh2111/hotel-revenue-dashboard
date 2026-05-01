@@ -15,7 +15,6 @@ const readExcel = (file) => {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
-        // cellDates: true ép Excel phải trả về chuẩn Ngày tháng thay vì mã số
         const workbook = XLSX.read(data, { type: "array", cellDates: true });
         resolve(workbook);
       } catch (err) {
@@ -26,17 +25,15 @@ const readExcel = (file) => {
   });
 };
 
-// Hàm nhận diện cuối tuần chính xác 100%
 function isWeekend(dateVal) {
   if (!dateVal) return false;
   let d;
   if (dateVal instanceof Date) d = dateVal;
   else if (typeof dateVal === "number") d = new Date(Math.round((dateVal - 25569) * 86400 * 1000));
   else d = new Date(dateVal);
-  
   if (isNaN(d.getTime())) return false;
   const day = d.getDay();
-  return day === 5 || day === 6; // Thứ 6, Thứ 7
+  return day === 5 || day === 6;
 }
 
 export default function App() {
@@ -47,6 +44,9 @@ export default function App() {
 
   const [selectedDayType, setSelectedDayType] = useState("Weekday");
   const [selectedRoomType, setSelectedRoomType] = useState("RT_STD");
+  
+  // STATE ĐIỀU KHIỂN LEAD TIME
+  const [simLeadTime, setSimLeadTime] = useState(7);
 
   const handleProcessData = async () => {
     if (!historyFile || !forecastFile) return alert("Vui lòng tải lên đủ 2 file dữ liệu.");
@@ -64,7 +64,7 @@ export default function App() {
         if (keyArray.length >= 2) metrics[String(keyArray[0]).trim()] = parseFloat(keyArray[1]) || 0;
       });
 
-      const forecastTotal = metrics["Forecast Total Revenue"] || metrics["Combined Revenue Forecast"] || 125494;
+      const forecastTotal = metrics["Forecast Total Revenue"] || 125494;
       const onHandTotal = metrics["On-hand Total Revenue"] || 110744;
       const gapTotal = metrics["Gap Total Revenue"] || 14749;
       const ancGap = metrics["Gap Ancillary Revenue"] || 1555;
@@ -106,7 +106,6 @@ export default function App() {
         }
       });
 
-      // HÀM BACKUP TRONG TRƯỜNG HỢP DỮ LIỆU BỊ TRỐNG
       const getSafeOldPrice = (dt, rt) => {
         if (stats[dt][rt].count > 0 && stats[dt][rt].sum > 0) return stats[dt][rt].sum / stats[dt][rt].count;
         return rt === "RT_STD" ? (dt === "Weekend" ? 96 : 92) : rt === "RT_DLX" ? (dt === "Weekend" ? 135 : 131) : (dt === "Weekend" ? 215 : 212);
@@ -120,7 +119,7 @@ export default function App() {
             RT_STD: {
               name: "HẠNG TIÊU CHUẨN",
               oldPrice: getSafeOldPrice("Weekday", "RT_STD"),
-              newPrice: 90, 
+              basePrice: 90, 
               priorityList: [
                 { segment: "Corporate", priority: "CAO NHẤT", reason: "Phân tích Weekday cho thấy khách sạn ghi nhận lượng booking cao gấp đôi cuối tuần nhưng chi tiêu mỗi khách lại thấp (Volume-driven). Khách Corporate giúp tạo base công suất ổn định.", method: "Ký kết hợp đồng B2B dài hạn, tránh mất phí hoa hồng OTA." },
                 { segment: "Group", priority: "TRUNG BÌNH", reason: "Các đoàn công vụ vừa và nhỏ giúp lấp đầy nhanh chóng khoảng trống ngày thường.", method: "Phân phối qua hệ thống Đại lý (Wholesale) với mức giá Value Rate." },
@@ -132,7 +131,7 @@ export default function App() {
             RT_DLX: {
               name: "HẠNG CAO CẤP",
               oldPrice: getSafeOldPrice("Weekday", "RT_DLX"),
-              newPrice: 130,
+              basePrice: 130,
               priorityList: [
                 { segment: "Leisure", priority: "CAO NHẤT", reason: "Doanh thu đang phụ thuộc lớn vào phân khúc này (hơn 434,000 USD). Nhóm khách sẵn sàng chi trả cho sự thoải mái giữa tuần.", method: "Đẩy mạnh hiển thị Direct Website để giữ nguyên biên lợi nhuận ròng." },
                 { segment: "MICE", priority: "TRUNG BÌNH", reason: "Tận dụng ngân sách từ các đơn vị tổ chức sự kiện.", method: "Gói Bundle phòng họp nửa ngày kèm nghỉ dưỡng." }
@@ -143,7 +142,7 @@ export default function App() {
             RT_STE: {
               name: "HẠNG VIP",
               oldPrice: getSafeOldPrice("Weekday", "RT_STE"),
-              newPrice: 215,
+              basePrice: 215,
               priorityList: [
                 { segment: "Corporate (Executive)", priority: "CAO NHẤT", reason: "Cấp quản lý cao cấp không nhạy cảm về giá tuyệt đối.", method: "Cá nhân hóa dịch vụ thông qua kênh Direct Phone." },
                 { segment: "Leisure (VIP)", priority: "TRUNG BÌNH", reason: "Tệp khách tìm kiếm không gian riêng tư tuyệt đối.", method: "Upsell trực tiếp tại quầy Check-in." }
@@ -156,7 +155,7 @@ export default function App() {
             RT_STD: {
               name: "HẠNG TIÊU CHUẨN",
               oldPrice: getSafeOldPrice("Weekend", "RT_STD"),
-              newPrice: 102,
+              basePrice: 102,
               priorityList: [
                 { segment: "Leisure", priority: "CAO NHẤT", reason: "Cuối tuần lượng booking giảm nhưng ADR tăng mạnh. Nhu cầu du lịch tự túc cuối tuần rất lớn.", method: "Tối ưu hiển thị đa kênh trên các OTA (Booking, Agoda)." },
                 { segment: "Group", priority: "TRUNG BÌNH", reason: "Nguồn khách ổn định đi theo đoàn nhỏ gia đình.", method: "Áp dụng điều khoản Non-refundable." }
@@ -167,7 +166,7 @@ export default function App() {
             RT_DLX: {
               name: "HẠNG CAO CẤP",
               oldPrice: getSafeOldPrice("Weekend", "RT_DLX"),
-              newPrice: 145,
+              basePrice: 145,
               priorityList: [
                 { segment: "Leisure Couple", priority: "CAO NHẤT", reason: "Sức mua lớn, tập trung vào trải nghiệm lãng mạn cuối tuần.", method: "Quảng cáo gói Combo qua mạng xã hội đổ về Direct Web." },
                 { segment: "MICE", priority: "THẤP", reason: "Ít phổ biến vào cuối tuần.", method: "Chỉ bán nếu còn tồn kho sát ngày." }
@@ -178,7 +177,7 @@ export default function App() {
             RT_STE: {
               name: "HẠNG VIP",
               oldPrice: getSafeOldPrice("Weekend", "RT_STE"),
-              newPrice: 225,
+              basePrice: 225,
               priorityList: [
                 { segment: "Leisure (Family/VIP)", priority: "CAO NHẤT", reason: "Dữ liệu lấp đầy Suite cuối tuần đạt đỉnh (57.4%). Nhóm đa thế hệ có sức mua rất lớn.", method: "Bán độc quyền qua Loyalty Program." },
                 { segment: "Group", priority: "THẤP", reason: "Không phù hợp ngân sách khách đoàn.", method: "Chỉ dùng để Upsell." }
@@ -225,11 +224,27 @@ export default function App() {
   // ==================== MÀN HÌNH BÁO CÁO ====================
   const room = appData.rooms[selectedDayType][selectedRoomType];
   
-  // Tính toán Mục tiêu Tối ưu doanh thu (Target Revenue)
-  // Logic: Chốt được 92% Gap với mức giá thặng dư 15%
+  // THUẬT TOÁN ĐIỀU CHỈNH GIÁ DỰA TRÊN LEAD TIME
+  let dynamicPrice = room.basePrice;
+  let leadTimeStatus = "Bình thường";
+  let leadTimeAction = "Duy trì mức giá đề xuất cơ bản. Tốc độ Pickup ổn định.";
+  let leadTimeColor = "#334155"; // Màu xám đậm
+
+  if (simLeadTime <= 3) {
+    dynamicPrice = room.basePrice * 1.15; // Tăng 15%
+    leadTimeStatus = "Cận ngày (Last-minute)";
+    leadTimeAction = "Cầu khẩn cấp. Thuật toán tự động tăng 15% giá bán nhằm tối đa hóa thặng dư tiêu dùng (Yield).";
+    leadTimeColor = "#dc2626"; // Đỏ
+  } else if (simLeadTime >= 15) {
+    dynamicPrice = room.basePrice * 0.90; // Giảm 10%
+    leadTimeStatus = "Từ sớm (Early Bird)";
+    leadTimeAction = "Giảm 10% để thu hút Base Volume, BẮT BUỘC kèm điều khoản Non-refundable để chống tỷ lệ hủy 83.2%.";
+    leadTimeColor = "#059669"; // Xanh lá
+  }
+  
   const targetRevenue = appData.metrics.onHand + (appData.metrics.gap * 0.92 * 1.15);
   const growth = targetRevenue - appData.metrics.forecast;
-  const priceDiff = room.oldPrice > 0 ? ((room.newPrice / room.oldPrice - 1) * 100).toFixed(1) : 0;
+  const priceDiff = room.oldPrice > 0 ? ((dynamicPrice / room.oldPrice - 1) * 100).toFixed(1) : 0;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "40px", fontFamily: "system-ui, -apple-system, sans-serif", color: "#1e293b" }}>
@@ -259,7 +274,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* ĐIỀU KHIỂN CHIẾN LƯỢC */}
+          {/* ĐIỀU KHIỂN BỐI CẢNH */}
           <div style={{ display: "flex", gap: "10px", marginBottom: "24px" }}>
             <button onClick={() => setSelectedDayType("Weekday")} style={tabStyle(selectedDayType === "Weekday")}>BỐI CẢNH DỮ LIỆU: NGÀY TRONG TUẦN (WEEKDAY)</button>
             <button onClick={() => setSelectedDayType("Weekend")} style={tabStyle(selectedDayType === "Weekend")}>BỐI CẢNH DỮ LIỆU: CUỐI TUẦN (WEEKEND)</button>
@@ -288,27 +303,42 @@ export default function App() {
 
             {/* NỘI DUNG ĐỀ XUẤT */}
             <main>
+              
+              {/* BỘ ĐIỀU KHIỂN LEAD TIME MỚI THÊM VÀO */}
+              <section style={{ marginBottom: "20px", padding: "24px", background: "#f1f5f9", border: "1px solid #cbd5e1", borderRadius: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+                  <label style={{ fontSize: "14px", fontWeight: "900", color: "#0f172a" }}>ĐIỀU CHỈNH THỜI GIAN KHÁCH ĐẶT TRƯỚC (LEAD TIME):</label>
+                  <span style={{ fontSize: "18px", fontWeight: "900", color: "#1e40af", background: "white", padding: "5px 15px", borderRadius: "4px", border: "1px solid #cbd5e1" }}>{simLeadTime} NGÀY</span>
+                </div>
+                <input type="range" min="0" max="30" value={simLeadTime} onChange={(e) => setSimLeadTime(Number(e.target.value))} style={{ width: "100%", cursor: "pointer", accentColor: "#1e40af" }} />
+                <div style={{ marginTop: "15px", fontSize: "15px", color: "#334155" }}>
+                  <strong style={{ color: "#0f172a" }}>Phân loại booking:</strong> <span style={{ fontWeight: "800", color: leadTimeColor }}>{leadTimeStatus}</span>
+                  <br/>
+                  <strong style={{ color: "#0f172a", display: "inline-block", marginTop: "8px" }}>Phản ứng của Thuật toán Giá:</strong> {leadTimeAction}
+                </div>
+              </section>
+
               <section style={{ marginBottom: "40px", background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "8px", overflow: "hidden" }}>
-                <h2 style={{ fontSize: "16px", fontWeight: "900", color: "#ffffff", background: "#0f172a", margin: 0, padding: "15px 20px" }}>1. ĐỀ XUẤT MỨC GIÁ BÁN TỐI ƯU</h2>
+                <h2 style={{ fontSize: "16px", fontWeight: "900", color: "#ffffff", background: "#0f172a", margin: 0, padding: "15px 20px" }}>1. ĐỀ XUẤT MỨC GIÁ BÁN ĐỘNG (DYNAMIC PRICING)</h2>
                 <div style={{ padding: "20px" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
                     <thead>
                       <tr>
                         <th style={thStyle}>GIÁ LỊCH SỬ (ADR HIỆN TẠI)</th>
-                        <th style={thStyle}>MỨC GIÁ ĐỀ XUẤT MỚI</th>
+                        <th style={thStyle}>MỨC GIÁ ĐỘNG TỐI ƯU</th>
                         <th style={thStyle}>BIÊN ĐỘ ĐIỀU CHỈNH</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
                         <td style={tdStyle}>{currency(room.oldPrice)}</td>
-                        <td style={{ ...tdStyle, fontWeight: "900", fontSize: "24px", color: "#1e40af" }}>{currency(room.newPrice)}</td>
+                        <td style={{ ...tdStyle, fontWeight: "900", fontSize: "24px", color: "#1e40af" }}>{currency(dynamicPrice)}</td>
                         <td style={{ ...tdStyle, color: priceDiff >= 0 ? "#059669" : "#dc2626", fontWeight: "800", fontSize: "18px" }}>{priceDiff > 0 ? "+" : ""}{priceDiff}%</td>
                       </tr>
                     </tbody>
                   </table>
                   <div style={{ marginTop: "20px", padding: "15px 20px", background: "#f8fafc", borderLeft: "4px solid #1e40af", fontSize: "15px", lineHeight: "1.7", color: "#334155" }}>
-                    <strong style={{ color: "#0f172a" }}>Căn cứ chiến lược:</strong> {room.strategyReason}
+                    <strong style={{ color: "#0f172a" }}>Căn cứ chiến lược chung:</strong> {room.strategyReason}
                   </div>
                 </div>
               </section>
